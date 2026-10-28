@@ -27,3 +27,13 @@ try {
 } finally {
     if (Test-Path -LiteralPath $payload) { Remove-Item -LiteralPath $payload -Recurse -Force }
 }
+
+[xml]$wix = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../deploy/windows/server/installer.wxs') -Raw
+$namespace = [Xml.XmlNamespaceManager]::new($wix.NameTable)
+$namespace.AddNamespace('w', 'http://schemas.microsoft.com/wix/2006/wi')
+$launchers = $wix.SelectNodes('//w:Shortcut[contains(@Target,"powershell.exe")]/@Target | //w:CustomAction[contains(@ExeCommand,"powershell.exe")]/@ExeCommand', $namespace)
+if ($launchers.Count -ne 6) { throw 'Expected six server PowerShell launcher references.' }
+foreach ($launcher in $launchers) {
+    if (-not $launcher.Value.Contains('[System64Folder]') -or $launcher.Value.Contains('[SystemFolder]')) { throw 'Server x64 launcher must use System64Folder.' }
+}
+Write-Host 'PASS all six server MSI launchers use the 64-bit Windows system directory.'

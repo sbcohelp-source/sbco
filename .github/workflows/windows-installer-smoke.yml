@@ -1,0 +1,58 @@
+name: Smoke test Windows server and client installers
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful Windows installer build run ID from this repository
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  installer-smoke:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source build provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          if ($env:SOURCE_RUN_ID -notmatch '^[0-9]{1,20}$') { throw 'Enter a numeric Actions run ID.' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read source run.' }
+          if ($run.repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.path -ne '.github/workflows/windows-installers.yml' -or $run.event -ne 'workflow_dispatch' -or $run.conclusion -ne 'success') { throw 'Source must be a successful manual installer build from this repository.' }
+          New-Item -ItemType Directory -Path artifacts/windows-smoke-logs -Force | Out-Null
+          $run | Select-Object id,head_sha,html_url,path,conclusion | ConvertTo-Json | Set-Content artifacts/windows-smoke-logs/source-run.json
+      - name: Download server installer
+        uses: actions/download-artifact@v4
+        with:
+          name: sbco-server-windows-x64-unsigned
+          path: artifacts/windows-smoke-input/sbco-server-windows-x64-unsigned
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+      - name: Download client installer
+        uses: actions/download-artifact@v4
+        with:
+          name: sbco-client-windows-x64-unsigned
+          path: artifacts/windows-smoke-input/sbco-client-windows-x64-unsigned
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+      - name: Check and exercise MSI packages on the disposable runner
+        run: |
+          ./scripts/test-windows-installers.ps1 -ArtifactDirectory artifacts/windows-smoke-input -LogDirectory artifacts/windows-smoke-logs
+      - name: Retain smoke evidence and installer logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-smoke-${{ inputs.source_run_id }}
+          path: artifacts/windows-smoke-logs/
+          if-no-files-found: warn
+          retention-days: 14

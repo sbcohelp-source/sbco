@@ -20,18 +20,18 @@
     </Directory>
     <DirectoryRef Id="SBCOMenu">
       <Component Id="ServerShortcut" Guid="*" Win64="yes">
-        <Shortcut Id="ConfigureShortcut" Name="Configure SBCO Server" Description="Set up HTTPS and the first administrator, or resume the existing server" Target="[SystemFolder]WindowsPowerShell\v1.0\powershell.exe" Arguments="-NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Configure-Server.ps1&quot;" WorkingDirectory="INSTALLFOLDER" Icon="SBCOIcon" />
+        <Shortcut Id="ConfigureShortcut" Name="Configure SBCO Server" Description="Set up HTTPS and the first administrator, or resume the existing server" Target="[System64Folder]WindowsPowerShell\v1.0\powershell.exe" Arguments="-NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Configure-Server.ps1&quot;" WorkingDirectory="INSTALLFOLDER" Icon="SBCOIcon" />
         <RegistryValue Root="HKLM" Key="Software\S K Singh\SBCO Server" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
         <RemoveFolder Id="RemoveServerMenu" On="uninstall" />
       </Component>
     </DirectoryRef>
     <Feature Id="Server" Title="SBCO Server" Level="1"><ComponentGroupRef Id="ServerPayload" /><ComponentRef Id="ServerShortcut" /></Feature>
     <!-- No MSI property contains a database password or application password. -->
-    <CustomAction Id="StopOwnedServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Stop" Execute="deferred" Impersonate="no" Return="check" />
-    <CustomAction Id="RemoveOwnedServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Remove" Execute="deferred" Impersonate="no" Return="check" />
-    <CustomAction Id="ResumeOwnedServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Resume" Execute="deferred" Impersonate="no" Return="check" />
-    <CustomAction Id="RollbackResumeServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Resume" Execute="rollback" Impersonate="no" Return="ignore" />
-    <CustomAction Id="RollbackStopServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Stop" Execute="rollback" Impersonate="no" Return="ignore" />
+    <CustomAction Id="StopOwnedServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Stop" Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="RemoveOwnedServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Remove" Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="ResumeOwnedServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Resume" Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="RollbackResumeServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Resume" Execute="rollback" Impersonate="no" Return="ignore" />
+    <CustomAction Id="RollbackStopServices" Directory="INSTALLFOLDER" ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Manage-Services.ps1&quot; -Action Stop" Execute="rollback" Impersonate="no" Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="RollbackResumeServices" Before="StopOwnedServices">Installed</Custom>
       <Custom Action="StopOwnedServices" Before="RemoveOwnedServices">Installed</Custom>

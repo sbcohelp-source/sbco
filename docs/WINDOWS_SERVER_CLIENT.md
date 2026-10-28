@@ -79,3 +79,11 @@ Backups use PostgreSQL custom archives, archive inspection and a SHA-256 sidecar
 ## Native acceptance required
 
 On both Windows 10 and Windows 11, verify clean installation, ordinary-client startup, server service accounts/SIDs and effective ACLs, initialization, TLS trust and hostname errors, firewall consent, multi-client login/role isolation, imports, reports, training reset, restart after interruption, backup/restore, repair, uninstall/reinstall persistence and upgrade rollback. Test Unicode/spaced paths and machines without preinstalled WebView2. Check all DLL dependencies and event/service logs. MSI generation alone does not establish these results.
+
+## Disposable Windows packaging smoke test
+
+After a successful **Build Windows server and client installers** run, dispatch **Smoke test Windows server and client installers** with that run's numeric ID. The separate workflow accepts artifacts only from a successful manual build in this repository and downloads both named installer artifacts with read-only Actions access.
+
+The smoke script refuses ordinary/local hosts and pre-existing SBCO products, services or data. Before executing either MSI, it verifies the supplied SHA-256, product names, distinct product/upgrade identities, x64 package metadata, 64-bit server PowerShell launchers and absence of PostgreSQL resources in the connected client. It then performs quiet fresh installation, same-package repair and uninstall with a five-minute limit per operation. A clearly marked test-only file verifies server ProgramData retention; no server configuration, administrator bootstrap, database initialization or office service startup is requested. Logs, package identity evidence and the source commit are retained for 14 days, including on failure.
+
+This test runs on the ephemeral `windows-2025` GitHub image. Passing it is packaging evidence only, not Windows 10/11 qualification, a signed-release claim or office acceptance. The server launchers deliberately use `System64Folder`: [Microsoft documents SystemFolder as the 32-bit system path on 64-bit Windows](https://learn.microsoft.com/en-us/windows/win32/msi/systemfolder).
