@@ -1,0 +1,55 @@
+@import "tailwindcss";
+@source "../../../../packages";
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: #fff;
+  --color-secondary: #eaf1ed;
+  --color-secondary-foreground: #214c3e;
+  --color-muted: #edf2ee;
+  --color-muted-foreground: #65756d;
+  --color-accent: #e1ece4;
+  --color-accent-foreground: #214c3e;
+  --color-destructive: #b32635;
+  --color-border: #dbe3dc;
+  --color-input: #ced9d1;
+  --color-ring: #527b64;
+  --color-popover: #fff;
+  --color-popover-foreground: #173b2b;
+  --color-sidebar: #153e30;
+  --color-sidebar-foreground: #e9f2eb;
+  --color-sidebar-border: #345849;
+  --color-sidebar-accent: #315b46;
+  --color-sidebar-accent-foreground: #fff;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --font-sans: Arial, Helvetica, sans-serif;
+}
+:root {
+  --background: #f5f7f3;
+  --foreground: #183a2c;
+  --card: #fff;
+  --primary: #2b6247;
+}
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+  button,
+  a,
+  input,
+  select {
+    @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring;
+  }
+}
+.control {
+  @apply h-11 w-full rounded-lg border border-input bg-card px-3 text-sm;
+}

@@ -1,0 +1,1827 @@
+[
+  {
+    "doctype": "DocType",
+    "name": "SBCO Incident Event",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": [
+      "event_date",
+      "event_type",
+      "reference_doctype",
+      "reference_name",
+      "notes",
+      "user"
+    ],
+    "fields": [
+      {
+        "fieldname": "event_date",
+        "label": "Event Date",
+        "fieldtype": "Datetime",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "event_type",
+        "label": "Event Type",
+        "fieldtype": "Select",
+        "options": "Created\nLetter Drafted\nLetter Issued\nReminder Issued\nCompliance Recorded\nReopened\nVerification Corrected",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "reference_doctype",
+        "label": "Reference Doctype",
+        "fieldtype": "Link",
+        "options": "DocType"
+      },
+      {
+        "fieldname": "reference_name",
+        "label": "Reference Name",
+        "fieldtype": "Dynamic Link",
+        "options": "reference_doctype"
+      },
+      {
+        "fieldname": "notes",
+        "label": "Notes",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "user",
+        "label": "User",
+        "fieldtype": "Link",
+        "options": "User",
+        "in_list_view": 1
+      }
+    ],
+    "permissions": [],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 1,
+    "issingle": 0
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Import Batch",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": [
+      "source_file",
+      "file_name",
+      "file_hash",
+      "report_family",
+      "status",
+      "started_on",
+      "completed_on",
+      "total_rows",
+      "inserted_rows",
+      "duplicate_rows",
+      "failed_rows",
+      "error_log",
+      "imported_by"
+    ],
+    "fields": [
+      {
+        "fieldname": "source_file",
+        "label": "Source File",
+        "fieldtype": "Attach",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "file_name",
+        "label": "File Name",
+        "fieldtype": "Data",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "file_hash",
+        "label": "File Hash",
+        "fieldtype": "Data",
+        "unique": 1
+      },
+      {
+        "fieldname": "report_family",
+        "label": "Report Family",
+        "fieldtype": "Select",
+        "options": "BO/AO Long Book\nSO BRN Long Book"
+      },
+      {
+        "fieldname": "status",
+        "label": "Status",
+        "fieldtype": "Select",
+        "options": "Queued\nProcessing\nCompleted\nNo Data\nPartially Completed\nFailed",
+        "default": "Queued",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "started_on",
+        "label": "Started On",
+        "fieldtype": "Datetime"
+      },
+      {
+        "fieldname": "completed_on",
+        "label": "Completed On",
+        "fieldtype": "Datetime"
+      },
+      {
+        "fieldname": "total_rows",
+        "label": "Total Rows",
+        "fieldtype": "Int",
+        "default": 0
+      },
+      {
+        "fieldname": "inserted_rows",
+        "label": "Inserted Rows",
+        "fieldtype": "Int",
+        "default": 0
+      },
+      {
+        "fieldname": "duplicate_rows",
+        "label": "Duplicate Rows",
+        "fieldtype": "Int",
+        "default": 0
+      },
+      {
+        "fieldname": "failed_rows",
+        "label": "Failed Rows",
+        "fieldtype": "Int",
+        "default": 0
+      },
+      {
+        "fieldname": "error_log",
+        "label": "Error Log",
+        "fieldtype": "Long Text"
+      },
+      {
+        "fieldname": "imported_by",
+        "label": "Imported By",
+        "fieldtype": "Link",
+        "options": "User",
+        "default": "__user"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1,
+        "email": 1,
+        "share": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1
+      }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 0,
+    "issingle": 0,
+    "autoname": "format:SBCO-IMP-{YYYY}-{#####}",
+    "title_field": "file_name"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Letter",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": [
+      "letter_number",
+      "office",
+      "letter_kind",
+      "reminder_round",
+      "status",
+      "letter_date",
+      "due_date",
+      "addressee",
+      "address",
+      "notes",
+      "parent_letter",
+      "items",
+      "issued_by",
+      "issued_on",
+      "pdf"
+    ],
+    "fields": [
+      {
+        "fieldname": "letter_number",
+        "label": "Letter Number",
+        "fieldtype": "Data",
+        "unique": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office",
+        "label": "Office",
+        "fieldtype": "Link",
+        "options": "SBCO Office",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "letter_kind",
+        "label": "Letter Kind",
+        "fieldtype": "Select",
+        "options": "Initial MAP\nInitial Voucher Follow-up\nMixed Initial\nReminder",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "reminder_round",
+        "label": "Reminder Round",
+        "fieldtype": "Int",
+        "default": 0
+      },
+      {
+        "fieldname": "status",
+        "label": "Status",
+        "fieldtype": "Select",
+        "options": "Draft\nIssued\nOverdue\nPartially Complied\nComplied\nCancelled",
+        "default": "Draft",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "letter_date",
+        "label": "Letter Date",
+        "fieldtype": "Date"
+      },
+      {
+        "fieldname": "due_date",
+        "label": "Due Date",
+        "fieldtype": "Date"
+      },
+      {
+        "fieldname": "addressee",
+        "label": "Addressee",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "address",
+        "label": "Address",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "notes",
+        "label": "Notes",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "parent_letter",
+        "label": "Parent Letter",
+        "fieldtype": "Link",
+        "options": "SBCO Letter"
+      },
+      {
+        "fieldname": "items",
+        "label": "Items",
+        "fieldtype": "Table",
+        "options": "SBCO Letter Item",
+        "reqd": 1
+      },
+      {
+        "fieldname": "issued_by",
+        "label": "Issued By",
+        "fieldtype": "Link",
+        "options": "User"
+      },
+      {
+        "fieldname": "issued_on",
+        "label": "Issued On",
+        "fieldtype": "Datetime"
+      },
+      {
+        "fieldname": "pdf",
+        "label": "Pdf",
+        "fieldtype": "Attach"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1,
+        "email": 1,
+        "share": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1
+      }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 0,
+    "issingle": 0,
+    "autoname": "format:SBCO-LTR-{YYYY}-{#####}",
+    "title_field": "letter_number"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Office Pool Member",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "istable": 1,
+    "editable_grid": 1,
+    "field_order": ["office", "office_name", "office_type", "parent_so"],
+    "fields": [
+      {
+        "fieldname": "office",
+        "label": "Office",
+        "fieldtype": "Link",
+        "options": "SBCO Office",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office_name",
+        "label": "Office Name",
+        "fieldtype": "Data",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office_type",
+        "label": "Office Type",
+        "fieldtype": "Data",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "parent_so",
+        "label": "Parent SO",
+        "fieldtype": "Link",
+        "options": "SBCO Office",
+        "read_only": 1,
+        "in_list_view": 1
+      }
+    ]
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO PA Office Assignment",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "autoname": "format:SBCO-PA-ASG-{#####}",
+    "title_field": "office_name",
+    "search_fields": "pa_user,office,office_name,parent_so",
+    "track_changes": 1,
+    "field_order": [
+      "pa_user",
+      "office",
+      "office_name",
+      "office_type",
+      "parent_so",
+      "active",
+      "audit_section",
+      "assigned_by",
+      "assigned_on",
+      "unassigned_by",
+      "unassigned_on",
+      "remarks"
+    ],
+    "fields": [
+      {
+        "fieldname": "pa_user",
+        "label": "SBCO PA",
+        "fieldtype": "Link",
+        "options": "User",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office",
+        "label": "Office",
+        "fieldtype": "Link",
+        "options": "SBCO Office",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office_name",
+        "label": "Office Name",
+        "fieldtype": "Data",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office_type",
+        "label": "Office Type",
+        "fieldtype": "Select",
+        "options": "SO\nBO",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "parent_so",
+        "label": "Parent SO",
+        "fieldtype": "Link",
+        "options": "SBCO Office",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "active",
+        "label": "Active",
+        "fieldtype": "Check",
+        "default": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "audit_section",
+        "label": "Allocation Audit",
+        "fieldtype": "Section Break"
+      },
+      {
+        "fieldname": "assigned_by",
+        "label": "Assigned By",
+        "fieldtype": "Link",
+        "options": "User",
+        "read_only": 1
+      },
+      {
+        "fieldname": "assigned_on",
+        "label": "Assigned On",
+        "fieldtype": "Datetime",
+        "read_only": 1
+      },
+      {
+        "fieldname": "unassigned_by",
+        "label": "Unassigned By",
+        "fieldtype": "Link",
+        "options": "User",
+        "read_only": 1
+      },
+      {
+        "fieldname": "unassigned_on",
+        "label": "Unassigned On",
+        "fieldtype": "Datetime",
+        "read_only": 1
+      },
+      {
+        "fieldname": "remarks",
+        "label": "Remarks",
+        "fieldtype": "Small Text"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "report": 1
+      }
+    ],
+    "sort_field": "assigned_on",
+    "sort_order": "DESC"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Import Duplicate",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": [
+      "import_batch",
+      "duplicate_type",
+      "source_file",
+      "source_worksheet",
+      "source_row",
+      "fingerprint",
+      "existing_transaction",
+      "details"
+    ],
+    "fields": [
+      {
+        "fieldname": "import_batch",
+        "label": "Import Batch",
+        "fieldtype": "Link",
+        "options": "SBCO Import Batch",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "duplicate_type",
+        "label": "Duplicate Type",
+        "fieldtype": "Select",
+        "options": "Exact File\nSemantic Transaction",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "source_file",
+        "label": "Source File",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "source_worksheet",
+        "label": "Source Worksheet",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "source_row",
+        "label": "Source Row",
+        "fieldtype": "Int"
+      },
+      {
+        "fieldname": "fingerprint",
+        "label": "Fingerprint",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "existing_transaction",
+        "label": "Existing Transaction",
+        "fieldtype": "Link",
+        "options": "SBCO Transaction"
+      },
+      {
+        "fieldname": "details",
+        "label": "Details",
+        "fieldtype": "Small Text"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1,
+        "email": 1,
+        "share": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1
+      }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 0,
+    "issingle": 0,
+    "autoname": "hash"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Transaction",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": [
+      "office",
+      "office_name",
+      "report_type",
+      "report_date",
+      "value_date",
+      "account_number",
+      "scheme",
+      "transaction_id",
+      "reference_id",
+      "entry_user_id",
+      "transaction_type",
+      "supervisor_verification_required",
+      "is_agent_transaction",
+      "is_rd_default_transaction",
+      "description",
+      "credit",
+      "debit",
+      "verification_status",
+      "mismatch_reason",
+      "verification_notes",
+      "verified_by",
+      "verified_by_role",
+      "verified_on",
+      "pool_group",
+      "verification_revision",
+      "reverification_status",
+      "reverification_basis",
+      "final_verification_status",
+      "final_mismatch_reason",
+      "final_verification_notes",
+      "finalized_by",
+      "finalized_on",
+      "import_batch",
+      "source_file",
+      "source_worksheet",
+      "source_row",
+      "fingerprint",
+      "incident"
+    ],
+    "fields": [
+      {
+        "fieldname": "office",
+        "label": "Office",
+        "fieldtype": "Link",
+        "options": "SBCO Office",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office_name",
+        "label": "Office Name",
+        "fieldtype": "Data",
+        "fetch_from": "office.office_name",
+        "read_only": 1
+      },
+      {
+        "fieldname": "report_type",
+        "label": "Report Type",
+        "fieldtype": "Select",
+        "options": "BO/AO\nSO",
+        "reqd": 1
+      },
+      {
+        "fieldname": "report_date",
+        "label": "Report Date",
+        "fieldtype": "Date",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "value_date",
+        "label": "Value Date",
+        "fieldtype": "Date"
+      },
+      {
+        "fieldname": "account_number",
+        "label": "Account Number",
+        "fieldtype": "Data",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "scheme",
+        "label": "Scheme",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "transaction_id",
+        "label": "Transaction Id",
+        "fieldtype": "Data",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "reference_id",
+        "label": "Reference Id",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "entry_user_id",
+        "label": "Entry User Id",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "transaction_type",
+        "label": "Transaction Type",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "supervisor_verification_required",
+        "label": "Supervisor Verification Required",
+        "fieldtype": "Check",
+        "default": 0,
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "is_agent_transaction",
+        "label": "Agent Transaction",
+        "fieldtype": "Check",
+        "default": 0,
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "is_rd_default_transaction",
+        "label": "RD Default Transaction",
+        "fieldtype": "Check",
+        "default": 0,
+        "read_only": 1
+      },
+      {
+        "fieldname": "description",
+        "label": "Description",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "credit",
+        "label": "Credit",
+        "fieldtype": "Currency",
+        "default": 0
+      },
+      {
+        "fieldname": "debit",
+        "label": "Debit",
+        "fieldtype": "Currency",
+        "default": 0
+      },
+      {
+        "fieldname": "verification_status",
+        "label": "Verification Status",
+        "fieldtype": "Select",
+        "options": "Pending\nMatched\nMismatch",
+        "default": "Pending",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "mismatch_reason",
+        "label": "Mismatch Reason",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "verification_notes",
+        "label": "Verification Notes",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "verified_by",
+        "label": "Verified By",
+        "fieldtype": "Link",
+        "options": "User",
+        "read_only": 1
+      },
+      {
+        "fieldname": "verified_by_role",
+        "label": "Verified By Role",
+        "fieldtype": "Data",
+        "read_only": 1
+      },
+      {
+        "fieldname": "verified_on",
+        "label": "Verified On",
+        "fieldtype": "Datetime",
+        "read_only": 1
+      },
+      {
+        "fieldname": "pool_group",
+        "label": "Pool Group",
+        "fieldtype": "Link",
+        "options": "SBCO Office Pool Group",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "verification_revision",
+        "label": "Verification Revision",
+        "fieldtype": "Int",
+        "default": 1,
+        "read_only": 1
+      },
+      {
+        "fieldname": "reverification_status",
+        "label": "Supervisor Re-verification",
+        "fieldtype": "Select",
+        "options": "Not Required\nPending\nConfirmed\nDisagreement",
+        "default": "Not Required",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "reverification_basis",
+        "label": "Re-verification Basis",
+        "fieldtype": "Select",
+        "options": "\nHigh Value\nRandom\nManual",
+        "read_only": 1
+      },
+      {
+        "fieldname": "final_verification_status",
+        "label": "Final Verification Status",
+        "fieldtype": "Select",
+        "options": "Pending\nMatched\nMismatch",
+        "default": "Pending",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "final_mismatch_reason",
+        "label": "Final Mismatch Reason",
+        "fieldtype": "Data",
+        "read_only": 1
+      },
+      {
+        "fieldname": "final_verification_notes",
+        "label": "Final Verification Notes",
+        "fieldtype": "Small Text",
+        "read_only": 1
+      },
+      {
+        "fieldname": "finalized_by",
+        "label": "Finalized By",
+        "fieldtype": "Link",
+        "options": "User",
+        "read_only": 1
+      },
+      {
+        "fieldname": "finalized_on",
+        "label": "Finalized On",
+        "fieldtype": "Datetime",
+        "read_only": 1
+      },
+      {
+        "fieldname": "import_batch",
+        "label": "Import Batch",
+        "fieldtype": "Link",
+        "options": "SBCO Import Batch"
+      },
+      {
+        "fieldname": "source_file",
+        "label": "Source File",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "source_worksheet",
+        "label": "Source Worksheet",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "source_row",
+        "label": "Source Row",
+        "fieldtype": "Int"
+      },
+      {
+        "fieldname": "fingerprint",
+        "label": "Fingerprint",
+        "fieldtype": "Data",
+        "unique": 1,
+        "read_only": 1
+      },
+      {
+        "fieldname": "incident",
+        "label": "Incident",
+        "fieldtype": "Link",
+        "options": "SBCO Incident",
+        "read_only": 1
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1,
+        "email": 1,
+        "share": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1
+      }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 0,
+    "issingle": 0,
+    "autoname": "format:SBCO-TXN-{YYYY}-{######}",
+    "title_field": "transaction_id",
+    "search_fields": "account_number,transaction_id,reference_id,office_name"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Verification Update Request",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": [
+      "transaction",
+      "status",
+      "requested_by",
+      "requested_on",
+      "request_reason",
+      "current_verification_status",
+      "current_mismatch_reason",
+      "current_verification_notes",
+      "proposed_verification_status",
+      "proposed_mismatch_reason",
+      "proposed_verification_notes",
+      "reviewed_by",
+      "reviewed_on",
+      "review_notes"
+    ],
+    "fields": [
+      {
+        "fieldname": "transaction",
+        "label": "Transaction",
+        "fieldtype": "Link",
+        "options": "SBCO Transaction",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "status",
+        "label": "Approval Status",
+        "fieldtype": "Select",
+        "options": "Pending Approval\nApproved\nRejected",
+        "default": "Pending Approval",
+        "reqd": 1,
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "requested_by",
+        "label": "Requested By",
+        "fieldtype": "Link",
+        "options": "User",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "requested_on",
+        "label": "Requested On",
+        "fieldtype": "Datetime",
+        "read_only": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "request_reason",
+        "label": "Reason for Update",
+        "fieldtype": "Small Text",
+        "reqd": 1
+      },
+      {
+        "fieldname": "current_verification_status",
+        "label": "Current Verification Status",
+        "fieldtype": "Select",
+        "options": "Pending\nMatched\nMismatch",
+        "reqd": 1,
+        "read_only": 1
+      },
+      {
+        "fieldname": "current_mismatch_reason",
+        "label": "Current Mismatch Reason",
+        "fieldtype": "Data",
+        "read_only": 1
+      },
+      {
+        "fieldname": "current_verification_notes",
+        "label": "Current Verification Notes",
+        "fieldtype": "Small Text",
+        "read_only": 1
+      },
+      {
+        "fieldname": "proposed_verification_status",
+        "label": "Proposed Verification Status",
+        "fieldtype": "Select",
+        "options": "Pending\nMatched\nMismatch",
+        "reqd": 1
+      },
+      {
+        "fieldname": "proposed_mismatch_reason",
+        "label": "Proposed Mismatch Reason",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "proposed_verification_notes",
+        "label": "Proposed Verification Notes",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "reviewed_by",
+        "label": "Reviewed By",
+        "fieldtype": "Link",
+        "options": "User",
+        "read_only": 1
+      },
+      {
+        "fieldname": "reviewed_on",
+        "label": "Reviewed On",
+        "fieldtype": "Datetime",
+        "read_only": 1
+      },
+      {
+        "fieldname": "review_notes",
+        "label": "Supervisor Review Notes",
+        "fieldtype": "Small Text",
+        "read_only": 1
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "create": 1,
+        "report": 1
+      }
+    ],
+    "sort_field": "requested_on",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 0,
+    "issingle": 0,
+    "autoname": "format:SBCO-UPD-{YYYY}-{######}",
+    "title_field": "transaction",
+    "search_fields": "transaction,requested_by,request_reason"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Letter Item",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": ["incident", "transaction", "issue", "required_action"],
+    "fields": [
+      {
+        "fieldname": "incident",
+        "label": "Incident",
+        "fieldtype": "Link",
+        "options": "SBCO Incident",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "transaction",
+        "label": "Transaction",
+        "fieldtype": "Link",
+        "options": "SBCO Transaction",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "issue",
+        "label": "Issue",
+        "fieldtype": "Data",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "required_action",
+        "label": "Required Action",
+        "fieldtype": "Small Text"
+      }
+    ],
+    "permissions": [],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 1,
+    "issingle": 0
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Office",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": [
+      "office_id",
+      "office_name",
+      "office_type",
+      "parent_office",
+      "address",
+      "email",
+      "active"
+    ],
+    "fields": [
+      {
+        "fieldname": "office_id",
+        "label": "Office Id",
+        "fieldtype": "Data",
+        "unique": 1,
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office_name",
+        "label": "Office Name",
+        "fieldtype": "Data",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office_type",
+        "label": "Office Type",
+        "fieldtype": "Select",
+        "options": "BO\nSO\nAO\nHO\nOther",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "parent_office",
+        "label": "Responsible SO",
+        "fieldtype": "Link",
+        "options": "SBCO Office",
+        "description": "SO whose head receives correspondence for this BO"
+      },
+      {
+        "fieldname": "address",
+        "label": "Address",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "email",
+        "label": "Email",
+        "fieldtype": "Data",
+        "options": "Email"
+      },
+      {
+        "fieldname": "active",
+        "label": "Active",
+        "fieldtype": "Check",
+        "default": 1,
+        "in_list_view": 1
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1,
+        "email": 1,
+        "share": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1
+      }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 0,
+    "issingle": 0,
+    "autoname": "field:office_id",
+    "title_field": "office_name",
+    "show_title_field_in_link": 1,
+    "search_fields": "office_id,office_name"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Incident",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": [
+      "transaction",
+      "office",
+      "incident_type",
+      "issue",
+      "status",
+      "current_letter",
+      "reply_due_date",
+      "compliance_date",
+      "compliance_reference",
+      "compliance_note",
+      "complied_by",
+      "events"
+    ],
+    "fields": [
+      {
+        "fieldname": "transaction",
+        "label": "Transaction",
+        "fieldtype": "Link",
+        "options": "SBCO Transaction",
+        "reqd": 1,
+        "unique": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "office",
+        "label": "Office",
+        "fieldtype": "Link",
+        "options": "SBCO Office",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "incident_type",
+        "label": "Incident Type",
+        "fieldtype": "Select",
+        "options": "MAP\nVoucher Follow-up",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "issue",
+        "label": "Issue",
+        "fieldtype": "Data",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "status",
+        "label": "Status",
+        "fieldtype": "Select",
+        "options": "Open\nLetter Drafted\nIssued\nOverdue\nPartially Complied\nComplied\nClosed",
+        "default": "Open",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "current_letter",
+        "label": "Current Letter",
+        "fieldtype": "Link",
+        "options": "SBCO Letter"
+      },
+      {
+        "fieldname": "reply_due_date",
+        "label": "Reply Due Date",
+        "fieldtype": "Date"
+      },
+      {
+        "fieldname": "compliance_date",
+        "label": "Compliance Date",
+        "fieldtype": "Date"
+      },
+      {
+        "fieldname": "compliance_reference",
+        "label": "Compliance Reference",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "compliance_note",
+        "label": "Compliance Note",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "complied_by",
+        "label": "Complied By",
+        "fieldtype": "Link",
+        "options": "User"
+      },
+      {
+        "fieldname": "events",
+        "label": "Events",
+        "fieldtype": "Table",
+        "options": "SBCO Incident Event"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1,
+        "email": 1,
+        "share": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1
+      }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 0,
+    "issingle": 0,
+    "autoname": "format:SBCO-INC-{YYYY}-{#####}",
+    "title_field": "issue"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Supervisor Reverification",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "autoname": "format:SBCO-REVERIFY-{#####}",
+    "title_field": "transaction",
+    "search_fields": "transaction,office,pool_group,pa_verified_by,reviewed_by",
+    "track_changes": 1,
+    "field_order": [
+      "transaction",
+      "verification_revision",
+      "office",
+      "pool_group",
+      "selection_basis",
+      "sampling_percentage",
+      "sampling_value",
+      "status",
+      "pa_section",
+      "pa_status",
+      "pa_mismatch_reason",
+      "pa_notes",
+      "pa_verified_by",
+      "pa_verified_on",
+      "supervisor_section",
+      "supervisor_status",
+      "supervisor_mismatch_reason",
+      "supervisor_notes",
+      "reviewed_by",
+      "reviewed_on",
+      "agreement"
+    ],
+    "fields": [
+      {
+        "fieldname": "transaction",
+        "label": "Transaction",
+        "fieldtype": "Link",
+        "options": "SBCO Transaction",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "verification_revision",
+        "label": "Verification Revision",
+        "fieldtype": "Int",
+        "default": 1,
+        "reqd": 1
+      },
+      {
+        "fieldname": "office",
+        "label": "Office",
+        "fieldtype": "Link",
+        "options": "SBCO Office",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "pool_group",
+        "label": "Pool Group",
+        "fieldtype": "Link",
+        "options": "SBCO Office Pool Group",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "selection_basis",
+        "label": "Selection Basis",
+        "fieldtype": "Select",
+        "options": "High Value\nRandom\nManual",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "sampling_percentage",
+        "label": "Sampling Percentage",
+        "fieldtype": "Percent",
+        "read_only": 1
+      },
+      {
+        "fieldname": "sampling_value",
+        "label": "Sampling Value",
+        "fieldtype": "Int",
+        "read_only": 1
+      },
+      {
+        "fieldname": "status",
+        "label": "Status",
+        "fieldtype": "Select",
+        "options": "Pending\nConfirmed\nDisagreement",
+        "default": "Pending",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "pa_section",
+        "label": "PA Verification Snapshot",
+        "fieldtype": "Section Break"
+      },
+      {
+        "fieldname": "pa_status",
+        "label": "PA Status",
+        "fieldtype": "Select",
+        "options": "Matched\nMismatch",
+        "reqd": 1
+      },
+      {
+        "fieldname": "pa_mismatch_reason",
+        "label": "PA Mismatch Reason",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "pa_notes",
+        "label": "PA Notes",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "pa_verified_by",
+        "label": "PA Verified By",
+        "fieldtype": "Link",
+        "options": "User",
+        "reqd": 1
+      },
+      {
+        "fieldname": "pa_verified_on",
+        "label": "PA Verified On",
+        "fieldtype": "Datetime",
+        "reqd": 1
+      },
+      {
+        "fieldname": "supervisor_section",
+        "label": "Supervisor Re-verification",
+        "fieldtype": "Section Break"
+      },
+      {
+        "fieldname": "supervisor_status",
+        "label": "Supervisor Status",
+        "fieldtype": "Select",
+        "options": "Matched\nMismatch"
+      },
+      {
+        "fieldname": "supervisor_mismatch_reason",
+        "label": "Supervisor Mismatch Reason",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "supervisor_notes",
+        "label": "Supervisor Notes",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "reviewed_by",
+        "label": "Reviewed By",
+        "fieldtype": "Link",
+        "options": "User",
+        "read_only": 1
+      },
+      {
+        "fieldname": "reviewed_on",
+        "label": "Reviewed On",
+        "fieldtype": "Datetime",
+        "read_only": 1
+      },
+      {
+        "fieldname": "agreement",
+        "label": "Agreement",
+        "fieldtype": "Check",
+        "read_only": 1
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "report": 1
+      }
+    ],
+    "sort_field": "creation",
+    "sort_order": "DESC"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO PA Pool Assignment",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "autoname": "format:SBCO-POOL-ASG-{#####}",
+    "title_field": "pool_group",
+    "search_fields": "pa_user,pool_group",
+    "track_changes": 1,
+    "field_order": [
+      "pa_user",
+      "pool_group",
+      "active",
+      "assigned_by",
+      "assigned_on",
+      "unassigned_by",
+      "unassigned_on",
+      "remarks"
+    ],
+    "fields": [
+      {
+        "fieldname": "pa_user",
+        "label": "SBCO PA",
+        "fieldtype": "Link",
+        "options": "User",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "pool_group",
+        "label": "Pool Group",
+        "fieldtype": "Link",
+        "options": "SBCO Office Pool Group",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "active",
+        "label": "Active",
+        "fieldtype": "Check",
+        "default": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "assigned_by",
+        "label": "Assigned By",
+        "fieldtype": "Link",
+        "options": "User",
+        "read_only": 1
+      },
+      {
+        "fieldname": "assigned_on",
+        "label": "Assigned On",
+        "fieldtype": "Datetime",
+        "read_only": 1
+      },
+      {
+        "fieldname": "unassigned_by",
+        "label": "Unassigned By",
+        "fieldtype": "Link",
+        "options": "User",
+        "read_only": 1
+      },
+      {
+        "fieldname": "unassigned_on",
+        "label": "Unassigned On",
+        "fieldtype": "Datetime",
+        "read_only": 1
+      },
+      {
+        "fieldname": "remarks",
+        "label": "Remarks",
+        "fieldtype": "Small Text"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "report": 1
+      }
+    ],
+    "sort_field": "assigned_on",
+    "sort_order": "DESC"
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Settings",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": [
+      "mismatch_reasons",
+      "reminder_interval_days",
+      "letter_number_prefix",
+      "signatory",
+      "designation",
+      "maximum_pdf_rows",
+      "portal_title",
+      "random_reverification_percent"
+    ],
+    "fields": [
+      {
+        "fieldname": "mismatch_reasons",
+        "label": "Mismatch Reasons",
+        "fieldtype": "Table",
+        "options": "SBCO Mismatch Reason"
+      },
+      {
+        "fieldname": "reminder_interval_days",
+        "label": "Reminder Interval Days",
+        "fieldtype": "Int",
+        "default": 15
+      },
+      {
+        "fieldname": "letter_number_prefix",
+        "label": "Letter Number Prefix",
+        "fieldtype": "Data",
+        "default": "SBCO"
+      },
+      {
+        "fieldname": "signatory",
+        "label": "Signatory",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "designation",
+        "label": "Designation",
+        "fieldtype": "Data"
+      },
+      {
+        "fieldname": "maximum_pdf_rows",
+        "label": "Maximum Pdf Rows",
+        "fieldtype": "Int",
+        "default": 20000
+      },
+      {
+        "fieldname": "portal_title",
+        "label": "Portal Title",
+        "fieldtype": "Data",
+        "default": "SBCO Voucher Verification"
+      },
+      {
+        "fieldname": "random_reverification_percent",
+        "label": "Random Re-verification Percentage",
+        "fieldtype": "Percent",
+        "default": 10,
+        "description": "Percentage of non-high-value PA verifications selected for Supervisor re-verification."
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1,
+        "print": 1,
+        "email": 1,
+        "share": 1
+      }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 0,
+    "issingle": 1
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Mismatch Reason",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "field_order": ["reason", "incident_type", "enabled"],
+    "fields": [
+      {
+        "fieldname": "reason",
+        "label": "Reason",
+        "fieldtype": "Data",
+        "reqd": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "incident_type",
+        "label": "Incident Type",
+        "fieldtype": "Select",
+        "options": "MAP\nVoucher Follow-up",
+        "default": "MAP",
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "enabled",
+        "label": "Enabled",
+        "fieldtype": "Check",
+        "default": 1,
+        "in_list_view": 1
+      }
+    ],
+    "permissions": [],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1,
+    "allow_rename": 0,
+    "is_submittable": 0,
+    "istable": 1,
+    "issingle": 0
+  },
+  {
+    "doctype": "DocType",
+    "name": "SBCO Office Pool Group",
+    "module": "SBCO",
+    "engine": "InnoDB",
+    "autoname": "field:group_name",
+    "title_field": "group_name",
+    "search_fields": "group_name,description",
+    "track_changes": 1,
+    "field_order": [
+      "group_name",
+      "active",
+      "random_reverification_percent",
+      "description",
+      "members"
+    ],
+    "fields": [
+      {
+        "fieldname": "group_name",
+        "label": "Pool Group Name",
+        "fieldtype": "Data",
+        "reqd": 1,
+        "unique": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "active",
+        "label": "Active",
+        "fieldtype": "Check",
+        "default": 1,
+        "in_list_view": 1
+      },
+      {
+        "fieldname": "random_reverification_percent",
+        "label": "Random Re-verification %",
+        "fieldtype": "Percent",
+        "description": "Leave empty to use the global SBCO setting."
+      },
+      {
+        "fieldname": "description",
+        "label": "Description",
+        "fieldtype": "Small Text"
+      },
+      {
+        "fieldname": "members",
+        "label": "Offices",
+        "fieldtype": "Table",
+        "options": "SBCO Office Pool Member"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "SBCO Supervisor",
+        "read": 1,
+        "write": 1,
+        "create": 1,
+        "delete": 1,
+        "report": 1,
+        "export": 1
+      },
+      {
+        "role": "SBCO PA",
+        "read": 1,
+        "report": 1
+      }
+    ],
+    "sort_field": "group_name",
+    "sort_order": "ASC"
+  }
+]

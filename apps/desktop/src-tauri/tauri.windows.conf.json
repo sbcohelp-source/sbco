@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBuildCommand": ""
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi"],
+    "publisher": "S K Singh",
+    "homepage": "mailto:sbcohelp@gmail.com",
+    "icon": ["icons/icon.ico"],
+    "shortDescription": "SBCO voucher verification and office records",
+    "longDescription": "SBCO provides voucher verification, office setup, imports, reports, correspondence and a separate training workspace. This standalone desktop edition stores its PostgreSQL database on the local computer. Published by S K Singh. Support: sbcohelp@gmail.com.",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      },
+      "wix": {
+        "upgradeCode": "b8dc76d1-374a-4f76-95e8-db387b715bcf",
+        "language": "en-US",
+        "bannerPath": "installer/branding/banner.bmp",
+        "dialogImagePath": "installer/branding/dialog.bmp"
+      }
+    },
+    "licenseFile": "../../../LICENSE"
+  }
+}

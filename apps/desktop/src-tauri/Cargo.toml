@@ -1,0 +1,28 @@
+[package]
+name = "sbco-desktop"
+version = "0.1.0"
+edition = "2024"
+license-file = "../../../LICENSE"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+sbco-domain = { path = "../../../crates/domain" }
+sbco-contracts = { path = "../../../crates/contracts" }
+sbco-application = { path = "../../../crates/application" }
+sbco-infrastructure = { path = "../../../crates/infrastructure" }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls", "cookies"] }
+sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }
+
+[features]
+connected-client = []
+custom-protocol = ["tauri/custom-protocol"]

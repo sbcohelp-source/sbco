@@ -1,0 +1,12 @@
+[package]
+name = "sbco-worker"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[dependencies]
+sbco-infrastructure.workspace = true
+sbco-domain.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

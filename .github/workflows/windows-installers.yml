@@ -1,0 +1,66 @@
+name: Build Windows server and client installers
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-installers:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+      - name: Prepare pinned tools and validate PowerShell syntax
+        run: |
+          npm install --global yarn@1.22.22
+          if ($LASTEXITCODE -ne 0) { throw 'Yarn installation failed.' }
+          rustup toolchain install 1.99.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed.' }
+          rustup default 1.99.1
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed.' }
+          foreach ($file in Get-ChildItem scripts,deploy/windows -Filter *.ps1 -Recurse) {
+            $tokens=$null; $parseErrors=$null
+            [Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          }
+          yarn install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'JavaScript dependencies failed to install.' }
+      - name: Download pinned official Windows dependencies
+        run: |
+          ./scripts/get-windows-build-dependencies.ps1 -Destination (Join-Path $env:RUNNER_TEMP 'sbco-verified-inputs')
+      - name: Build SBCO Server MSI
+        run: |
+          $inputs = Get-Content (Join-Path $env:RUNNER_TEMP 'sbco-verified-inputs/inputs.json') -Raw | ConvertFrom-Json
+          ./scripts/build-windows-server-msi.ps1 -PostgresRoot $inputs.postgres_root -PostgresLicenseDirectory $inputs.postgres_licenses -NodeRoot $inputs.node_root -WinSwPath $inputs.winsw -CaddyPath $inputs.caddy -ThirdPartyLicenseDirectory $inputs.third_party_licenses -WixRoot $inputs.wix_root -SkipDependencyInstall
+      - name: Preserve dependency provenance
+        run: |
+          Copy-Item deploy/windows/dependencies.json artifacts/windows-server/dependencies.json
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'sbco-verified-inputs/inputs.json') artifacts/windows-server/build-inputs.json
+      - name: Upload SBCO Server installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbco-server-windows-x64-unsigned
+          path: |
+            artifacts/windows-server/*.msi
+            artifacts/windows-server/*.sha256
+            artifacts/windows-server/*SHA256SUMS
+            artifacts/windows-server/*.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Build SBCO Client MSI
+        run: |
+          ./scripts/build-connected-client-msi.ps1 -SkipDependencyInstall
+      - name: Upload SBCO Client installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbco-client-windows-x64-unsigned
+          path: |
+            artifacts/windows-client/*.msi
+            artifacts/windows-client/*.sha256
+          if-no-files-found: error
+          retention-days: 14

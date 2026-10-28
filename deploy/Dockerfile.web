@@ -1,0 +1,17 @@
+FROM node:26.12.1-bookworm-slim AS build
+WORKDIR /app
+COPY package.json yarn.lock ./
+COPY apps/web apps/web
+COPY packages packages
+RUN npm install --global yarn@1.22.22 && yarn install --frozen-lockfile
+ARG SBCO_API_URL=http://api:8091
+ENV SBCO_API_URL=$SBCO_API_URL NEXT_TELEMETRY_DISABLED=1
+RUN yarn build:web
+FROM node:26.12.1-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000 NEXT_TELEMETRY_DISABLED=1
+COPY --from=build --chown=node:node /app/apps/web/.next-web/standalone ./
+COPY --from=build --chown=node:node /app/apps/web/.next-web/static ./apps/web/.next-web/static
+COPY --from=build --chown=node:node /app/apps/web/public ./apps/web/public
+USER node
+CMD ["node", "apps/web/server.js"]

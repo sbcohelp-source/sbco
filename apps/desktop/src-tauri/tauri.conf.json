@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SBCO",
+  "version": "0.1.0",
+  "identifier": "in.sbco.vouchercheck",
+  "build": {
+    "frontendDist": "../../web/.next-desktop",
+    "devUrl": "http://localhost:3091",
+    "beforeBuildCommand": "yarn --cwd ../.. build:desktop-ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "SBCO Voucher Verification",
+        "width": 1280,
+        "height": 850,
+        "minWidth": 720,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'",
+      "capabilities": ["main"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb"],
+    "resources": {
+      "resources/postgres/": "postgres/",
+      "../../../crates/documents/fonts/LICENSE.txt": "licenses/Noto-OFL.txt"
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0t64", "libssl3t64"]
+      }
+    }
+  }
+}

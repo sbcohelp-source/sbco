@@ -1,0 +1,12 @@
+{
+  "name": "@sbco/client",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.4"
+  }
+}

@@ -1,0 +1,15 @@
+.tools
+.env*
+node_modules
+**/node_modules
+target
+**/target
+**/.next
+**/.next-desktop
+**/out
+apps/desktop/src-tauri/resources/postgres
+data
+.git
+
+**/.next-web
+artifacts/

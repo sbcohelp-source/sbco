@@ -1,0 +1,32 @@
+{
+  "postgres": {
+    "version": "18.6-1",
+    "url": "https://get.enterprisedb.com/postgresql/postgresql-18.6-1-windows-x64-binaries.zip",
+    "sha256": "fbe23da234ee31547bf8a36d29dfd81e82b849df2d2b78d2eecb43d360252f8c",
+    "verification": "Observed SHA-256 of the official HTTPS download; not a separate signature verification"
+  },
+  "winsw": {
+    "version": "2.12.0",
+    "url": "https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe",
+    "sha256": "05b82d46ad331cc16bdc00de5c6332c1ef818df8ceefcd49c726553209b3a0da",
+    "verification": "Observed SHA-256 of the official HTTPS download; not a separate signature verification"
+  },
+  "caddy": {
+    "version": "2.11.7",
+    "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_windows_amd64.zip",
+    "sha256": "0a1edc0b799512051c57071ce0e798d3f2cf67dc98171366f1d2b326072e3b06",
+    "verification": "SHA-256 from the upstream GitHub release asset digest"
+  },
+  "wix": {
+    "version": "3.14.1",
+    "url": "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip",
+    "sha256": "6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31",
+    "verification": "Observed SHA-256 of the official HTTPS download; not a separate signature verification"
+  },
+  "node": {
+    "version": "26.12.1",
+    "url": "https://nodejs.org/dist/v26.12.1/node-v26.12.1-win-x64.zip",
+    "checksum_url": "https://nodejs.org/dist/v26.12.1/SHASUMS256.txt",
+    "verification": "Exact archive checked against the official HTTPS checksum list; no detached signature verification"
+  }
+}

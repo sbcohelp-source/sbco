@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="493" height="58" viewBox="0 0 493 58">
+  <title>SBCO Windows installer banner</title>
+  <desc>The left title area is blank for Windows Installer text. The SBCO clipboard mark is on the right.</desc>
+  <rect width="493" height="58" fill="#ffffff"/>
+  <path d="M0 57.5H493" stroke="#dbe7e1"/>
+  <g transform="translate(437 8) scale(.1640625)">
+    <rect width="256" height="256" rx="48" fill="#124b3a"/>
+    <rect x="66" y="58" width="124" height="150" rx="14" fill="none" stroke="#ffffff" stroke-width="12"/>
+    <rect x="96" y="42" width="64" height="32" rx="10" fill="#ffffff"/>
+    <path d="m92 136 25 25 48-50" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,0 +1,27 @@
+[package]
+name = "sbco-infrastructure"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[dependencies]
+sbco-domain.workspace = true
+sbco-contracts.workspace = true
+sbco-application.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+sha2.workspace = true
+hex.workspace = true
+rand.workspace = true
+argon2.workspace = true
+base64.workspace = true
+calamine.workspace = true
+tracing.workspace = true
+regex = "1"
+sbco-documents = { path = "../documents" }

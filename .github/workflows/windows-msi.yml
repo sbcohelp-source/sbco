@@ -1,0 +1,93 @@
+name: Prepare Windows MSI
+on:
+  workflow_dispatch:
+    inputs:
+      postgres_zip_url:
+        description: Official PostgreSQL 18.6 Windows x64 ZIP URL (EDB or postgresql.org)
+        required: true
+        default: https://get.enterprisedb.com/postgresql/postgresql-18.6-1-windows-x64-binaries.zip
+        type: string
+      postgres_zip_sha256:
+        description: SHA-256 pin for that exact official ZIP (64 hex characters)
+        required: true
+        default: fbe23da234ee31547bf8a36d29dfd81e82b849df2d2b78d2eecb43d360252f8c
+        type: string
+      postgres_root_in_zip:
+        description: Relative PostgreSQL root directory inside the ZIP
+        required: true
+        default: pgsql
+        type: string
+      license_directory_in_root:
+        description: Relative distribution license/documentation directory inside PostgreSQL root
+        required: true
+        default: doc
+        type: string
+permissions:
+  contents: read
+jobs:
+  windows-msi:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+      - name: Prepare pinned build tools
+        run: |
+          npm install --global yarn@1.22.22
+          if ($LASTEXITCODE -ne 0) { throw 'Yarn installation failed.' }
+          rustup toolchain install 1.99.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed.' }
+          rustup default 1.99.1
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed.' }
+      - name: Verify and extract the explicitly supplied native PostgreSQL archive
+        env:
+          SBCO_PG_ZIP_URL: ${{ inputs.postgres_zip_url }}
+          SBCO_PG_ZIP_SHA256: ${{ inputs.postgres_zip_sha256 }}
+          SBCO_PG_ROOT_IN_ZIP: ${{ inputs.postgres_root_in_zip }}
+          SBCO_PG_LICENSE_RELATIVE: ${{ inputs.license_directory_in_root }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $uri = [uri]$env:SBCO_PG_ZIP_URL
+          if ($uri.Scheme -ne 'https' -or $uri.UserInfo -or $uri.Fragment -or $uri.Host -notin @('get.enterprisedb.com', 'download.postgresql.org', 'ftp.postgresql.org')) {
+            throw 'Use an explicit HTTPS ZIP URL from the official PostgreSQL/EDB distribution hosts.'
+          }
+          if ($env:SBCO_PG_ZIP_SHA256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'Provide the independently verified ZIP SHA-256.' }
+          $archive = Join-Path $env:RUNNER_TEMP 'postgres-windows.zip'
+          Invoke-WebRequest -Uri $uri -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $env:SBCO_PG_ZIP_SHA256) { throw 'PostgreSQL ZIP checksum mismatch.' }
+          $expanded = Join-Path $env:RUNNER_TEMP 'sbco-postgres-windows'
+          New-Item -ItemType Directory -Path $expanded | Out-Null
+          $prefix = [System.IO.Path]::GetFullPath($expanded) + [System.IO.Path]::DirectorySeparatorChar
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
+          try {
+            foreach ($entry in $zip.Entries) {
+              $resolved = [System.IO.Path]::GetFullPath((Join-Path $expanded $entry.FullName))
+              if (-not $resolved.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { throw 'ZIP entry escapes the extraction directory.' }
+              if ((($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw 'ZIP symbolic links are prohibited.' }
+            }
+          } finally { $zip.Dispose() }
+          Expand-Archive -LiteralPath $archive -DestinationPath $expanded
+          foreach ($relative in @($env:SBCO_PG_ROOT_IN_ZIP, $env:SBCO_PG_LICENSE_RELATIVE)) {
+            if ([System.IO.Path]::IsPathRooted($relative) -or $relative -match '(^|[\\/])\.\.([\\/]|$)' -or $relative -match '[\r\n]') { throw 'Archive resource locations must be relative subdirectories.' }
+          }
+          $nativeRoot = Join-Path $expanded $env:SBCO_PG_ROOT_IN_ZIP
+          $licenses = Join-Path $nativeRoot $env:SBCO_PG_LICENSE_RELATIVE
+          "SBCO_NATIVE_POSTGRES=$nativeRoot" >> $env:GITHUB_ENV
+          "SBCO_NATIVE_LICENSES=$licenses" >> $env:GITHUB_ENV
+      - name: Build branded MSI with offline WebView2
+        run: |
+          ./scripts/build-windows-msi.ps1 -PostgresRoot $env:SBCO_NATIVE_POSTGRES -LicenseDirectory $env:SBCO_NATIVE_LICENSES
+      - name: Upload installer for Windows acceptance testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbco-windows-x64-msi-unsigned
+          path: |
+            artifacts/windows-msi/*.msi
+            artifacts/windows-msi/*.msi.sha256
+          if-no-files-found: error
+          retention-days: 14

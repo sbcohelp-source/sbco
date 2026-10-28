@@ -1,0 +1,12 @@
+[package]
+name = "sbco-domain"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true

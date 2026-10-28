@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Local SBCO application window",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-save", "dialog:allow-open"]
+}

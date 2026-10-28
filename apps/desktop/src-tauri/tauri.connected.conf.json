@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SBCO Client",
+  "identifier": "in.sbco.client",
+  "app": {
+    "windows": [
+      {
+        "title": "SBCO \u2014 Server-connected client",
+        "width": 1280,
+        "height": 850,
+        "minWidth": 720,
+        "minHeight": 600
+      }
+    ]
+  },
+  "bundle": {
+    "targets": ["msi"],
+    "resources": ["../../../crates/documents/fonts/LICENSE.txt", "../../../LICENSE"],
+    "windows": {
+      "wix": {
+        "upgradeCode": "d599863f-574d-46f4-bebf-3609e933a7e1"
+      }
+    },
+    "shortDescription": "SBCO office server client",
+    "longDescription": "SBCO Client connects securely to your office server for voucher verification, imports, reports, correspondence and training. Records remain on the server. Published by S K Singh. Support: sbcohelp@gmail.com."
+  },
+  "build": {
+    "beforeBuildCommand": ""
+  }
+}

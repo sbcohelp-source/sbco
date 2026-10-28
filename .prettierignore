@@ -1,0 +1,22 @@
+.tools
+node_modules
+target
+**/target
+**/.next
+**/out
+**/generated.ts
+Cargo.lock
+yarn.lock
+*.sql
+*.rs
+*.toml
+data
+
+**/.next-desktop
+apps/desktop/src-tauri/resources/postgres
+
+**/.next-web
+artifacts/
+
+# WiX XML is not JavaScript; validated by the Windows WiX build.
+deploy/windows/server/installer.wxs
