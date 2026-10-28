@@ -158,7 +158,8 @@ test("configured clients sign in on the server, hide local backups and explicitl
   await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Back up", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Restore", exact: true })).toHaveCount(0);
-  await page.goto("/settings");
+  // Preserve the document while changing sections, just as the desktop navigation does.
+  await page.getByRole("navigation").getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
   expect(
     state.calls.some((call) => ["backup_status", "backup", "restore"].includes(call.command)),

@@ -51,6 +51,21 @@ jobs:
           yarn test:acceptance
           yarn playwright test --config playwright.onboarding.config.ts
           yarn playwright test --config playwright.training-live.config.ts
+      - name: Preserve failed browser and service diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-and-service-failure-evidence
+          path: |
+            /tmp/sbco-playwright-results/
+            /tmp/sbco-acceptance-results/
+            /tmp/sbco-onboarding-results/
+            /tmp/sbco-training-live-results/
+            /tmp/sbco-api.log
+            /tmp/sbco-worker.log
+            /tmp/sbco-web.log
+          if-no-files-found: ignore
+          retention-days: 7
   desktop-linux:
     runs-on: ubuntu-latest
     steps:

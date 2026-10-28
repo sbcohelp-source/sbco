@@ -48,7 +48,7 @@ try {
     Copy-Item (Join-Path $repoRoot 'LICENSE') (Join-Path $payload 'LICENSE')
     Copy-Item (Join-Path $repoRoot 'crates/documents/fonts/LICENSE.txt') (Join-Path $payload 'licenses/Noto-OFL.txt')
     Copy-Item (Join-Path $repoRoot 'deploy/windows/server') (Join-Path $payload 'server') -Recurse
-    $manifest = foreach ($file in Get-ChildItem $payload -File -Recurse | Sort-Object FullName) { '{0}  {1}' -f (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), ([IO.Path]::GetRelativePath($payload,$file.FullName).Replace('\','/')) }
+    $manifest = foreach ($file in Get-ChildItem -LiteralPath $payload -File -Recurse | Sort-Object FullName) { '{0}  {1}' -f (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), ([IO.Path]::GetRelativePath($payload,$file.FullName).Replace('\','/')) }
     Set-Content (Join-Path $payload 'SHA256SUMS') $manifest -Encoding utf8NoBOM
     # WiX UI expects RTF; retain the repository license text unchanged in payload.
     $license = Get-Content (Join-Path $repoRoot 'LICENSE') -Raw
@@ -64,7 +64,7 @@ try {
     $msi = Join-Path $output 'SBCO-Server-0.1.0-x64.msi'
     & (Join-Path $WixRoot 'light.exe') -nologo -ext WixUIExtension -out $msi (Join-Path $work 'installer.wixobj') (Join-Path $work 'payload.wixobj')
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $msi)) { throw 'Server MSI linking failed.' }
-    $hash = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = (Get-FileHash -LiteralPath $msi -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content "$msi.sha256" "$hash  $([IO.Path]::GetFileName($msi))" -Encoding utf8NoBOM
     Copy-Item (Join-Path $payload 'SHA256SUMS') (Join-Path $output 'payload-SHA256SUMS') -Force
     Write-Host "Server MSI, checksum and payload manifest: $output"

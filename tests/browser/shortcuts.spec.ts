@@ -17,7 +17,8 @@ test("keyboard settings persist per user and reject unsafe or duplicate bindings
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await login(page);
-  await page.goto("/account");
+  // Use client navigation between sections; keep full reloads below to prove persistence.
+  await page.getByRole("navigation").getByRole("link", { name: "My account", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Keyboard preferences" })).toBeVisible();
   await page.getByLabel("Focus account search shortcut").fill("Ctrl+L");
   await page.getByRole("button", { name: "Save keyboard preferences" }).click();
@@ -32,7 +33,7 @@ test("keyboard settings persist per user and reject unsafe or duplicate bindings
   await expect(page.getByRole("status")).toContainText("Keyboard preferences saved");
   await page.reload();
   await expect(page.getByLabel("Focus account search shortcut")).toHaveValue("Alt+Shift+X");
-  await page.goto("/verify");
+  await page.getByRole("navigation").locator('a[href="/verify"]').click();
   await expect(page.getByLabel("Account or transaction")).toHaveAttribute(
     "aria-keyshortcuts",
     "Alt+Shift+X",
@@ -42,19 +43,19 @@ test("keyboard settings persist per user and reject unsafe or duplicate bindings
   await expect(page.getByLabel("Account or transaction")).not.toBeFocused();
   await page.keyboard.press("Alt+Shift+X");
   await expect(page.getByLabel("Account or transaction")).toBeFocused();
-  await page.goto("/account");
+  await page.getByRole("navigation").getByRole("link", { name: "My account", exact: true }).click();
   await page.getByLabel("Keyboard shortcuts", { exact: true }).selectOption("disabled");
   await page.getByRole("button", { name: "Save keyboard preferences" }).click();
   await page.reload();
   await expect(page.getByLabel("Keyboard shortcuts", { exact: true })).toHaveValue("disabled");
-  await page.goto("/verify");
+  await page.getByRole("navigation").locator('a[href="/verify"]').click();
   await page.getByRole("main").focus();
   await page.keyboard.press("Alt+Shift+X");
   await expect(page.getByLabel("Account or transaction")).not.toBeFocused();
   await expect(page.getByLabel("Account or transaction")).not.toHaveAttribute("aria-keyshortcuts");
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await login(page, "pa");
-  await page.goto("/account");
+  await page.getByRole("navigation").getByRole("link", { name: "My account", exact: true }).click();
   await expect(page.getByLabel("Focus account search shortcut")).toHaveValue("Alt+Shift+F");
   await expect(page.getByLabel("Keyboard shortcuts", { exact: true })).toHaveValue("enabled");
   await page.getByLabel("Focus account search shortcut").fill("Alt+Shift+X");
@@ -83,7 +84,7 @@ test("save shortcut targets only a focused marked form and honors native validat
     await new Promise((resolve) => setTimeout(resolve, 250));
     await route.fulfill({ json: {} });
   });
-  await page.goto("/offices");
+  await page.getByRole("navigation").locator('a[href="/offices"]').click();
   await page.getByLabel("Office ID", { exact: true }).focus();
   await page.keyboard.press("Alt+Shift+S");
   await expect(page.getByLabel("Office ID", { exact: true })).toBeFocused();
@@ -110,7 +111,7 @@ test("save shortcut targets only a focused marked form and honors native validat
       parent_id: null,
     },
   ]);
-  await page.goto("/account");
+  await page.getByRole("navigation").getByRole("link", { name: "My account", exact: true }).click();
   await page.getByLabel("Current password").fill("not-submitted");
   await page.getByLabel("New password (12+ characters)").fill("also-not-submitted");
   await page.keyboard.press("Alt+Shift+S");
@@ -153,7 +154,7 @@ test("verification shortcuts preserve typing and composition, navigate and recor
     if (row) row.primary_status = command.status;
     await route.fulfill({ json: {} });
   });
-  await page.goto("/verify");
+  await page.getByRole("navigation").locator('a[href="/verify"]').click();
   await expect(page.getByRole("heading", { name: "Account KEY0001", exact: true })).toBeVisible();
   await page.getByLabel("Account or transaction").focus();
   for (const binding of ["Alt+Shift+N", "Alt+Shift+M", "Alt+Shift+R"])

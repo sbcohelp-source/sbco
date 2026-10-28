@@ -16,6 +16,8 @@ export default defineConfig({
   use: {
     baseURL: process.env.SBCO_TEST_WEB || "http://localhost:3091",
     viewport: { width: 1440, height: 1000 },
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   projects: [
     { name: "chromium", use: { browserName: "chromium" } },

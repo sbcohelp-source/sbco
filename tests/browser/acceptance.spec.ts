@@ -65,6 +65,7 @@ test("administration and reports are accessible at desktop and mobile sizes", as
       errors.push(message.text() + " " + message.location().url);
   });
   await login(page);
+  // Exercise the app router: replacing the document here aborts production Link prefetches.
   for (const section of [
     "imports",
     "offices",
@@ -76,13 +77,13 @@ test("administration and reports are accessible at desktop and mobile sizes", as
     "settings",
     "account",
   ]) {
-    await page.goto(`/${section}`);
+    await page.getByRole("navigation").locator(`a[href="/${section}"]`).click();
     await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.getByText("Loading records…")).toHaveCount(0);
     await expect(page.locator("nextjs-portal [data-nextjs-dialog]")).toHaveCount(0);
     await accessible(page);
   }
-  await page.goto("/reports");
+  await page.getByRole("navigation").getByRole("link", { name: "Reports", exact: true }).click();
   await page.getByLabel("Report", { exact: true }).selectOption("DPR");
   await expect(page.getByRole("table", { name: "Daily Progress Register" })).toBeVisible();
   await accessible(page);
