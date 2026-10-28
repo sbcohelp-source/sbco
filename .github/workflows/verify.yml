@@ -59,10 +59,10 @@ jobs:
         with:
           node-version: 26.12.1
       - run: npm install --global yarn@1.22.22 && yarn install --frozen-lockfile && yarn build:desktop-ui
-      - run: docker build -t sbco-desktop-builder -f deploy/Dockerfile.desktop-builder .
+      - run: docker build --build-arg SBCO_BUILD_UID="$(id -u)" -t sbco-desktop-builder -f deploy/Dockerfile.desktop-builder .
       - name: Compile and rehearse local recovery
         run: |
-          docker run --rm -u 1000:1000 -v "$PWD:/work" -w /work -e SBCO_TEST_RESOURCES=/work/apps/desktop/src-tauri/resources sbco-desktop-builder bash -c '
+          docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" -w /work -e SBCO_TEST_RESOURCES=/work/apps/desktop/src-tauri/resources sbco-desktop-builder bash -e -c '
             export CARGO_HOME=/tmp/cargo RUSTUP_HOME=/tmp/rustup
             curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh
             sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain 1.99.1

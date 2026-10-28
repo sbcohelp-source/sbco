@@ -1,4 +1,7 @@
 FROM ubuntu:26.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev librsvg2-dev patchelf ca-certificates curl postgresql-18 postgresql-client-18 xvfb xauth webkitgtk-webdriver python3 && rm -rf /var/lib/apt/lists/*
+ARG SBCO_BUILD_UID=1000
+# PostgreSQL initdb requires a named, non-root user matching the mounted checkout.
+RUN test "$SBCO_BUILD_UID" -gt 0 && (getent passwd "$SBCO_BUILD_UID" >/dev/null || useradd --uid "$SBCO_BUILD_UID" --create-home sbco-builder)
 WORKDIR /work
