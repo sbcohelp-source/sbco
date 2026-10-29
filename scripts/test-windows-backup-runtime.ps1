@@ -169,16 +169,37 @@ try {
             $diagnosticInfo=if($diagnosticTask){Get-ScheduledTaskInfo -TaskName 'SBCO Server Daily Backup' -TaskPath '\'}else{$null}
             $statusPath=Join-Path $dataPath 'backup-status.json'
             $backupStatus=if(Test-Path -LiteralPath $statusPath){Get-Content -LiteralPath $statusPath -Raw|ConvertFrom-Json|Select-Object format,mode,result,started_at,completed_at,file,sha256}else{$null}
-            @{task_state=$(if($diagnosticTask){[string]$diagnosticTask.State}else{'Missing'});last_task_result=$(if($diagnosticInfo){$diagnosticInfo.LastTaskResult}else{$null});last_run=$(if($diagnosticInfo){$diagnosticInfo.LastRunTime}else{$null});action_executable=$(if($diagnosticTask){[IO.Path]::GetFileName($diagnosticTask.Actions[0].Execute)}else{$null});action_matches_expected=$(if($diagnosticTask){$diagnosticTask.Actions[0].Execute -ieq (Get-BackupTaskExecutable) -and $diagnosticTask.Actions[0].Arguments -ceq (Get-BackupTaskArguments) -and $diagnosticTask.Actions[0].WorkingDirectory -ieq $InstallRoot}else{$false});backup_script_exists=(Test-Path -LiteralPath (Join-Path $installPath 'server\Backup-Server.ps1'));backup_status=$backupStatus} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $LogDirectory 'backup-task-diagnostic.json')
+            @{task_state=$(if($diagnosticTask){[string]$diagnosticTask.State}else{'Missing'});last_task_result=$(if($diagnosticInfo){$diagnosticInfo.LastTaskResult}else{$null});last_run=$(if($diagnosticInfo){$diagnosticInfo.LastRunTime}else{$null});action_executable=$(if($diagnosticTask){[IO.Path]::GetFileName($diagnosticTask.Actions[0].Execute)}else{$null});action_matches_expected=$(if($diagnosticTask){$diagnosticTask.Actions[0].Execute -ieq (Get-BackupTaskExecutable) -and $diagnosticTask.Actions[0].Arguments -ceq (Get-BackupTaskArguments) -and $diagnosticTask.Actions[0].WorkingDirectory -ieq $InstallRoot}else{$false});backup_script_exists=(Test-Path -LiteralPath (Join-Path $installPath 'server\Backup-Server.ps1'));backup_files=@(Get-ChildItem -LiteralPath (Join-Path $dataPath 'backups') -File | Select-Object Name,Length);backup_status=$backupStatus} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $LogDirectory 'backup-task-diagnostic.json')
         } catch { Write-Warning 'Task diagnostic snapshot could not be collected.' }
         # Same installed script and Windows PowerShell version as SYSTEM; restricted to the
         # disposable fixture. Capture only sanitized text, never credentials or database files.
         if ($diagnosticTask -and $diagnosticTask.State -ne 'Running') {
             $probe=$null
             try {
+                # Load the installed implementation unchanged, but expose its original inner
+                # exception in this private diagnostic process instead of the generic UI error.
+                $probeScript=Join-Path $dataPath 'backup-diagnostic.ps1'
+                Write-Utf8 $probeScript @'
+param([string]$ServerDirectory)
+. (Join-Path $ServerDirectory 'Server-Common.ps1')
+. (Join-Path $ServerDirectory 'Backup-Common.ps1')
+Assert-Administrator
+$tokens=$null;$parseErrors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $ServerDirectory 'Backup-Common.ps1'),[ref]$tokens,[ref]$parseErrors)
+if($parseErrors.Count){throw 'Installed backup diagnostic source did not parse.'}
+$implementation=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-ServerBackup'},$true)
+$genericThrows=@($implementation.FindAll({param($node) $node -is [Management.Automation.Language.ThrowStatementAst] -and $node.Extent.Text -like "throw 'SBCO backup failed.*"},$true))
+if($genericThrows.Count -ne 1){throw 'Expected generic backup exception was not found.'}
+Invoke-Expression ($implementation.Extent.Text.Replace($genericThrows[0].Extent.Text,'throw'))
+try { Invoke-ServerBackup $false; exit 0 }
+catch {
+    @{error_type=$_.Exception.GetType().FullName;error_message=$_.Exception.Message;line=$_.InvocationInfo.ScriptLineNumber} | ConvertTo-Json -Compress | Write-Output
+    exit 1
+}
+'@
                 $start=[Diagnostics.ProcessStartInfo]::new()
                 $start.FileName=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-                $start.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+(Join-Path $installPath 'server\Backup-Server.ps1')+'"'
+                $start.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$probeScript+'" -ServerDirectory "'+(Join-Path $installPath 'server')+'"'
                 $start.UseShellExecute=$false;$start.CreateNoWindow=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
                 $start.EnvironmentVariables.Remove('PSModulePath') # Let Windows PowerShell construct its own module path.
                 $probe=[Diagnostics.Process]::new();$probe.StartInfo=$start;$null=$probe.Start()
