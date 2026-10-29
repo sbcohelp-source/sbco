@@ -60,6 +60,20 @@ async function login(page: Page, user: TestAccount) {
   await expect(page.getByRole("heading", { level: 2, name: /^Welcome to SBCO,/ })).toBeVisible();
 }
 
+async function logout(page: Page) {
+  // A click does not await the async session revocation. Do not replace the document
+  // until both the real logout response and the signed-out screen are complete.
+  const response = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/v1/logout" &&
+      response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  expect((await response).status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Welcome back", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Email address")).toBeVisible();
+}
+
 async function step(page: Page, name: string) {
   await expect(
     page.getByRole("heading", {
@@ -219,7 +233,7 @@ for (const role of ["Pa", "Supervisor"] as const) {
     await page.getByRole("button", { name: "Finish setup", exact: true }).click();
     await expect.poll(async () => (await progress(page)).completed).toBe(true);
     expect(await progress(page)).toMatchObject({ step: "ready", completed: true });
-    await page.getByRole("button", { name: "Sign out", exact: true }).click();
+    await logout(page);
     await login(page, other);
     expect(await progress(page)).toMatchObject({ step: "welcome", completed: false });
     expect(errors).toEqual([]);
@@ -237,6 +251,11 @@ test("team step creates staff and assigns only the selected office", async ({ pa
     parent_id: null,
   });
   await login(page, user);
+  // Exercise a slow real sign-out response before switching from administrator to PA.
+  await page.route("**/api/v1/logout", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.continue();
+  });
   await command(page.request, "save_onboarding", { step: "team", completed: false });
   await page.goto("/onboarding");
   await step(page, "Your team");
@@ -277,7 +296,7 @@ test("team step creates staff and assigns only the selected office", async ({ pa
       );
     })
     .toBe(true);
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await logout(page);
   await login(page, { id: staffId, ...staff });
   expect(await progress(page)).toMatchObject({ office_count: 1, assigned_office_count: 1 });
   await page.getByRole("button", { name: "Continue", exact: true }).click();
