@@ -78,6 +78,8 @@ The connected desktop is implemented and passed an installed Linux HTTPS rehears
 
 The [configured Windows server replacement rehearsal](https://github.com/sbcohelp-source/sbco/actions/runs/40889683192) passed for the tested pair of version 0.1.0 packages, preserving accounts, transactions, configuration, scheduled backups and archives through replacement and subsequent recovery checks. Future application/schema upgrades remain unqualified.
 
-Still required for these arrangements: installed Windows desktop GUI qualification, signing, chosen Windows 10/11 build/servicing acceptance, actual office HTTPS/LAN deployment, Windows multi-client testing, operator approval and a pilot office. A hosted installed-GUI rehearsal is running; hosted results do not replace office-machine acceptance.
+The [corrected standalone installed GUI](https://github.com/sbcohelp-source/sbco/actions/runs/40901522755) passed actual setup, sign-in, Help and account persistence after reopening on elevated Windows Server 2025.
+
+Still required for these arrangements: ordinary-user Windows desktop and connected-client GUI qualification, signing, chosen Windows 10/11 build/servicing acceptance, actual office HTTPS/LAN deployment, Windows multi-client testing, operator approval and a pilot office. Hosted results do not replace office-machine acceptance.
 
 Before deployment, record the actual host edition/build, office client count and peak workload, server name/IP, certificate issuer, backup destination and recovery owner. These values are intentionally not invented here.

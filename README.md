@@ -124,7 +124,7 @@ Standalone desktop backups run daily while the app is open, retain 14 automatic 
 
 ## Remaining release gates
 
-- Unsigned Windows server, client and standalone MSIs have been built. Server/client install, repair and uninstall pass on Windows 2025; the configured shared-server and standalone PostgreSQL recovery rehearsals pass. Standalone installer checks also pass. Scheduled backup/restore also passes. Qualify the selected Windows 10/11 builds and obtain signing identities. Connected-client HTTPS workflows have passed installed Linux testing.
+- Unsigned Windows server, client and standalone MSIs have been built. Server/client install, repair and uninstall pass on Windows 2025; the configured shared-server and standalone PostgreSQL recovery rehearsals pass. The corrected standalone installer passes packaging and [real installed setup/sign-in/Help/reopen](https://github.com/sbcohelp-source/sbco/actions/runs/40901522755) checks on an elevated hosted runner. Ordinary-user Windows desktop and connected-client GUI checks remain pending. Scheduled backup/restore also passes. Qualify the selected Windows 10/11 builds and obtain signing identities. Connected-client HTTPS workflows have passed installed Linux testing.
 - Obtain office-operator approval and reconcile real office data using [the acceptance checklist](docs/ACCEPTANCE_CHECKLIST.md).
 - Test Windows LAN clients, target OS/printers, manual screen-reader use, realistic workloads and future application-version upgrades.
 - Hosted application and Linux recovery CI passed on commit `ac85c31` ([run evidence](https://github.com/sbcohelp-source/sbco/actions/runs/40881122497)). Complete office Windows qualification and a real HTTPS deployment with an approved backup destination.
