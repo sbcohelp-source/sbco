@@ -36,6 +36,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 26.12.1
+      - name: Restore Windows compilation cache
+        id: rust-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            apps/desktop/src-tauri/target
+          key: windows-2025-rust-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'rust-toolchain.toml') }}-standalone-${{ github.sha }}
+          restore-keys: |
+            windows-2025-rust-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'rust-toolchain.toml') }}-
       - name: Prepare pinned build tools
         run: |
           npm install --global yarn@1.22.22
@@ -91,3 +104,31 @@ jobs:
             artifacts/windows-msi/*.msi.sha256
           if-no-files-found: error
           retention-days: 14
+      - name: Rehearse standalone PostgreSQL lifecycle and recovery
+        timeout-minutes: 15
+        run: |
+          $env:SBCO_TEST_RESOURCES = (Resolve-Path apps/desktop/src-tauri/resources).Path
+          $env:SBCO_POSTGRES_BIN = $null
+          $env:SBCO_POSTGRES_SHARE = $null
+          New-Item -ItemType Directory -Path artifacts/windows-standalone-tests -Force | Out-Null
+          cargo test --release --target x86_64-pc-windows-msvc --manifest-path apps/desktop/src-tauri/Cargo.toml --locked postgres::tests::local_database_survives_restart_and_restores_to_a_new_database -- --ignored --nocapture 2>&1 | Tee-Object -FilePath artifacts/windows-standalone-tests/lifecycle.log
+          if ($LASTEXITCODE -ne 0) { throw 'Standalone Windows PostgreSQL lifecycle/recovery test failed.' }
+      - name: Retain standalone lifecycle test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbco-windows-standalone-lifecycle
+          path: artifacts/windows-standalone-tests/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Save Windows compilation cache
+        if: ${{ !cancelled() && steps.rust-cache.outputs.cache-hit != 'true' && steps.rust-cache.outputs.cache-primary-key != '' }}
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            apps/desktop/src-tauri/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}

@@ -39,7 +39,7 @@ After these files are pushed to the intended repository, run **Prepare Windows M
 
 Provide the exact official PostgreSQL/EDB Windows archive HTTPS URL and its independently verified SHA-256. The workflow accepts only the configured official distribution hosts, checks the hash before extraction, rejects escaping ZIP paths/symlinks, and invokes the same native-resource checks as the local build. The optional archive-layout inputs default to `pgsql` and its `doc` directory; adjust them to the verified distribution's actual layout. Missing directories cause a failure rather than omitting required resources.
 
-The workflow runs on `windows-2025`, uploads the MSI and checksums as a temporary build artifact, and has read-only repository permissions. It does not push commits, create a release, install the MSI, or sign it. A successful workflow is a build result awaiting the native acceptance checks below.
+The workflow runs on `windows-2025`, uploads the MSI and checksums as a temporary build artifact, and has read-only repository permissions. After upload, it runs the existing native PostgreSQL lifecycle/recovery test against the packaged tools in a UUID temporary directory with a random local port. It covers initialization, instance exclusion, backup/checksum/error handling, restore and restart, and retains the test log. Shared compilation caching reduces repeated build cost. It does not push commits, create a release, install the MSI, or sign it. A successful workflow provides build and tested runtime evidence on that hosted image; Windows 10/11 and effective Windows ACL qualification remain pending below.
 
 ## Installer configuration
 
