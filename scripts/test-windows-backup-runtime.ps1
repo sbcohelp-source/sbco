@@ -162,6 +162,35 @@ try {
     $failureMessage=[regex]::Replace($failureMessage,'postgresql://[^@\s]+@','postgresql://[REDACTED]@')
     $failureMessage | Set-Content -LiteralPath (Join-Path $LogDirectory 'failure.txt')
     if ($fixtureCreated) {
+        # Preserve safe scheduler/status evidence before cleanup or a diagnostic backup overwrites it.
+        $diagnosticTask=$null
+        try {
+            $diagnosticTask=Get-ScheduledTask -TaskName 'SBCO Server Daily Backup' -TaskPath '\' -ErrorAction SilentlyContinue
+            $diagnosticInfo=if($diagnosticTask){Get-ScheduledTaskInfo -TaskName 'SBCO Server Daily Backup' -TaskPath '\'}else{$null}
+            $statusPath=Join-Path $dataPath 'backup-status.json'
+            $backupStatus=if(Test-Path -LiteralPath $statusPath){Get-Content -LiteralPath $statusPath -Raw|ConvertFrom-Json|Select-Object format,mode,result,started_at,completed_at,file,sha256}else{$null}
+            @{task_state=$(if($diagnosticTask){[string]$diagnosticTask.State}else{'Missing'});last_task_result=$(if($diagnosticInfo){$diagnosticInfo.LastTaskResult}else{$null});last_run=$(if($diagnosticInfo){$diagnosticInfo.LastRunTime}else{$null});action_executable=$(if($diagnosticTask){[IO.Path]::GetFileName($diagnosticTask.Actions[0].Execute)}else{$null});action_matches_expected=$(if($diagnosticTask){$diagnosticTask.Actions[0].Execute -ieq (Get-BackupTaskExecutable) -and $diagnosticTask.Actions[0].Arguments -ceq (Get-BackupTaskArguments) -and $diagnosticTask.Actions[0].WorkingDirectory -ieq $InstallRoot}else{$false});backup_script_exists=(Test-Path -LiteralPath (Join-Path $installPath 'server\Backup-Server.ps1'));backup_status=$backupStatus} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $LogDirectory 'backup-task-diagnostic.json')
+        } catch { Write-Warning 'Task diagnostic snapshot could not be collected.' }
+        # Same installed script and Windows PowerShell version as SYSTEM; restricted to the
+        # disposable fixture. Capture only sanitized text, never credentials or database files.
+        if ($diagnosticTask -and $diagnosticTask.State -ne 'Running') {
+            $probe=$null
+            try {
+                $start=[Diagnostics.ProcessStartInfo]::new()
+                $start.FileName=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+                $start.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+(Join-Path $installPath 'server\Backup-Server.ps1')+'"'
+                $start.UseShellExecute=$false;$start.CreateNoWindow=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
+                $start.EnvironmentVariables.Remove('PSModulePath') # Let Windows PowerShell construct its own module path.
+                $probe=[Diagnostics.Process]::new();$probe.StartInfo=$start;$null=$probe.Start()
+                $stdout=$probe.StandardOutput.ReadToEndAsync();$stderr=$probe.StandardError.ReadToEndAsync()
+                if(-not $probe.WaitForExit(30000)){$probe.Kill();throw 'Administrative diagnostic backup timed out.'}
+                $text='Exit code: '+$probe.ExitCode+"`n"+$stdout.Result+"`n"+$stderr.Result
+                if($password){$text=$text.Replace($password,'[REDACTED]')}
+                $text=[regex]::Replace($text,'postgresql://[^@\s]+@','postgresql://[REDACTED]@')
+                $text|Set-Content -LiteralPath (Join-Path $LogDirectory 'backup-powershell51-probe.txt') -Encoding utf8NoBOM
+            } catch { Write-Warning 'Administrative diagnostic backup probe could not finish.' }
+            finally {if($null -ne $probe){$probe.Dispose()}}
+        }
         # Only this fixture's PostgreSQL text logs; never config XML, database or dump files.
         $pgLogs=Join-Path $dataPath 'logs\SBCOPostgres'
         $pgLogFiles=@()
