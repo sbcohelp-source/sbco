@@ -1,6 +1,6 @@
 # Windows MSI preparation
 
-The project contains a branded Windows MSI build configuration and a manual build workflow. **No MSI has been produced or executed on Windows yet.** Configuration validation on Linux is not evidence that the Windows application, installer or recovery procedures work.
+Unsigned branded standalone MSI artifacts have been generated on Windows, including [build 40860043708](https://github.com/sbcohelp-source/sbco/actions/runs/40860043708), and their downloaded SHA-256 sidecars were verified. Standalone installer execution and complete native recovery qualification remain pending. The separate server/client packaging smoke has passed; it does not qualify this standalone edition.
 
 The installer identifies the publisher as **S K Singh** and lists **sbcohelp@gmail.com** for support. It uses the existing SBCO icon and the banner/dialog artwork in `apps/desktop/src-tauri/installer/branding/`. The Windows configuration is separate from the tested Linux configuration.
 
@@ -35,11 +35,13 @@ Successful builds copy MSI files and matching `.sha256` files to `artifacts/wind
 
 ## Manual workflow
 
-After these files are pushed to the intended repository, run **Prepare Windows MSI** through GitHub Actions. It runs only through `workflow_dispatch`; pushes and pull requests do not start it.
+Run **Prepare Windows MSI** through GitHub Actions on the intended repository commit. It runs only through `workflow_dispatch`; pushes and pull requests do not start it.
 
 Provide the exact official PostgreSQL/EDB Windows archive HTTPS URL and its independently verified SHA-256. The workflow accepts only the configured official distribution hosts, checks the hash before extraction, rejects escaping ZIP paths/symlinks, and invokes the same native-resource checks as the local build. The optional archive-layout inputs default to `pgsql` and its `doc` directory; adjust them to the verified distribution's actual layout. Missing directories cause a failure rather than omitting required resources.
 
 The workflow runs on `windows-2025`, uploads the MSI and checksums as a temporary build artifact, and has read-only repository permissions. After upload, it runs the existing native PostgreSQL lifecycle/recovery test against the packaged tools in a UUID temporary directory with a random local port. It covers initialization, instance exclusion, backup/checksum/error handling, restore and restart, and retains the test log. Shared compilation caching reduces repeated build cost. It does not push commits, create a release, install the MSI, or sign it. A successful workflow provides build and tested runtime evidence on that hosted image; Windows 10/11 and effective Windows ACL qualification remain pending below.
+
+For focused troubleshooting, **Diagnose Windows standalone recovery** uses the same verified PostgreSQL resources and desktop assets, compiles the test separately, and limits its execution to five minutes. It retains stage output and sanitized `postgres.log` files only from UUID test directories. It never collects database configuration, password files or dumps. The first diagnostic confirmed successful PostgreSQL startup followed by a Windows inherited-output-pipe hang; the Windows-only launcher correction is in commit `6ff9868` and is being rechecked in [run 40869540864](https://github.com/sbcohelp-source/sbco/actions/runs/40869540864). Do not treat a generated MSI as proof that the corrected runtime has passed.
 
 ## Installer configuration
 
@@ -60,4 +62,4 @@ The launcher implements Windows executable paths and selects PostgreSQL’s buil
 6. Verify a newer MSI preserves the same database and settings, and that uninstall/reinstall has the intended data-retention behavior. Preserve a manual backup and check record counts before accepting an upgrade.
 7. Review application and third-party notices, sign using the publisher's approved certificate if required, and verify the final signed artifact's checksum and installer behavior.
 
-Linux checks cannot certify these Windows behaviors. There is currently no verified Windows installer artifact or Windows acceptance record in this project.
+Linux checks cannot certify these Windows behaviors. Generated unsigned MSI files and hosted test logs are build evidence; standalone installation, effective Windows ACLs, offline WebView2 installation and Windows 10/11 office acceptance still require the checks above.

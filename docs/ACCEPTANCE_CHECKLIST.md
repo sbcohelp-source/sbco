@@ -1,4 +1,4 @@
-# Local release acceptance — 28 October 2026
+# Local release acceptance — 29 October 2026
 
 Automated checks establish that the tested behavior works with synthetic data. They do not constitute office approval. The office operator will review the reports and letters; that approval is still outstanding. Hosted deployment and legacy-data migration are outside the current fresh-local-installation scope.
 
@@ -131,6 +131,6 @@ Repeat with `yarn playwright test --config playwright.acceptance.config.ts 'conn
 
 ## Hosted verification update — 29 October 2026
 
-[Application and Linux CI passed](https://github.com/sbcohelp-source/sbco/actions/runs/40681285697) on commit `019116d`. The local production acceptance suite passed 45 cases across Chromium, Firefox and WebKit. The onboarding sign-out regression in commit `6a2c1c4` passed three targeted repetitions and the complete 18-case local production onboarding suite. Corrected Windows MSI builds and install/repair/uninstall verification remain in progress; hosted Windows packaging checks do not replace the office operator gates above.
+[Application and Linux CI passed](https://github.com/sbcohelp-source/sbco/actions/runs/40681285697) on commit `019116d`. The local production acceptance suite passed 45 cases across Chromium, Firefox and WebKit. The onboarding sign-out regression in commit `6a2c1c4` passed three targeted repetitions and the complete 18-case local production onboarding suite. [Windows server/client MSI install, repair and uninstall](https://github.com/sbcohelp-source/sbco/actions/runs/40864684093) now pass all six operations on a disposable Windows 2025 runner. Configured service, scheduled-backup/restore and refreshed standalone lifecycle qualification remain in progress; hosted Windows packaging checks do not replace the office operator gates above.
 
 A further hosted WebKit failure exposed late onboarding data stealing focus from mobile navigation. A gated query reproduced the runtime issue; the guide now preserves external control focus while retaining intentional step-heading focus. The corrected production build passed five focus repetitions, all 45 acceptance cases and all 18 onboarding cases across the three engines. The regression deliberately mocks only onboarding progress so it cannot alter the shared fixture's saved guide state.
