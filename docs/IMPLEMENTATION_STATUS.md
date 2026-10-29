@@ -40,6 +40,8 @@ Deletion requires reviewing the workspace counts and typing DELETE TRAINING. The
 
 ## Pending work
 
+The [installed standalone GUI check](https://github.com/sbcohelp-source/sbco/actions/runs/40893158617) exposed a startup failure in the older standalone package from build `40874922384`: Tauri supplies an extended-length Windows resource path, which PostgreSQL `initdb` cannot use when probing its companion executable. Its earlier native and MSI lifecycle checks passed but did not exercise this installed path. That standalone delivery copy is withheld while the path correction, regression and replacement installer are qualified. Server and connected-client packages are unaffected by this local PostgreSQL startup path.
+
 The [configured Windows server replacement rehearsal](https://github.com/sbcohelp-source/sbco/actions/runs/40889683192) now passes for the tested pair of version 0.1.0 packages. It preserves accounts, sessions, transactions, configuration, backup schedules and existing archives, and verifies a new SYSTEM backup, API recovery, restart, repair and uninstall preservation. This does not certify future application/schema upgrades or office Windows 10/11 machines.
 
 1. **Connected Windows qualification:** HTTPS desktop mode is implemented and passed installed Linux acceptance. Execute its MSI and the same workflows on Windows clients against the intended Linux and Windows hosts.

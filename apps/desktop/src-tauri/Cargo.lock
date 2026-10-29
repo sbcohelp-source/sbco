@@ -4530,6 +4530,7 @@ name = "sbco-desktop"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dunce",
  "reqwest",
  "sbco-application",
  "sbco-contracts",

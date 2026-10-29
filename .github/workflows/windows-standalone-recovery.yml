@@ -120,6 +120,8 @@ jobs:
           $env:SBCO_TEST_RESOURCES=(Resolve-Path apps/desktop/src-tauri/resources).Path
           $env:SBCO_POSTGRES_BIN=$null; $env:SBCO_POSTGRES_SHARE=$null
           $env:TEMP=$env:SBCO_RECOVERY_TEST_ROOT; $env:TMP=$env:SBCO_RECOVERY_TEST_ROOT
+          & $env:SBCO_RECOVERY_TEST_EXE postgres::tests --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL path and recovery unit tests failed.' }
           & $env:SBCO_RECOVERY_TEST_EXE postgres::tests::local_database_survives_restart_and_restores_to_a_new_database --ignored --nocapture 2>&1 | Tee-Object -FilePath artifacts/windows-recovery-diagnostic/lifecycle.log
           if ($LASTEXITCODE -ne 0) { throw 'Native lifecycle test failed.' }
       - name: Collect only sanitized PostgreSQL text logs

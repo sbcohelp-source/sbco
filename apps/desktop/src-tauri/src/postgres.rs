@@ -127,6 +127,12 @@ fn executable(bin: &Path, name: &str) -> PathBuf {
         name.into()
     })
 }
+fn compatible_tool_path(path: &Path) -> &Path {
+    // PostgreSQL's Windows child-program probe cannot consume Tauri's verbatim
+    // drive paths. Only simplify when the ordinary path has identical meaning;
+    // UNC, device, reserved-name and genuinely long paths must not be rewritten.
+    dunce::simplified(path)
+}
 fn checked(output: std::io::Result<Output>, name: &str) -> Result<(), String> {
     let output = output.map_err(|e| format!("Cannot start {name}: {e}"))?;
     if output.status.success() {
@@ -203,6 +209,8 @@ impl LocalPostgres {
     }
 
     pub fn start(root: &Path, resources: &Path) -> Result<Self, String> {
+        let root = compatible_tool_path(root);
+        let resources = compatible_tool_path(resources);
         private_directory(root)?;
         let lock = File::options()
             .create(true)
@@ -214,9 +222,11 @@ impl LocalPostgres {
             .map_err(|_| "This local SBCO installation is already running".to_owned())?;
         let bin = std::env::var_os("SBCO_POSTGRES_BIN")
             .map(PathBuf::from)
+            .map(|path| compatible_tool_path(&path).to_path_buf())
             .unwrap_or_else(|| resources.join("postgres/bin"));
         let share = std::env::var_os("SBCO_POSTGRES_SHARE")
             .map(PathBuf::from)
+            .map(|path| compatible_tool_path(&path).to_path_buf())
             .unwrap_or_else(|| resources.join("postgres/share"));
         let lib = resources.join("postgres/lib");
         let data = root.join("postgres");
@@ -534,6 +544,59 @@ mod tests {
     }
 
     #[test]
+    fn ordinary_tool_paths_keep_their_meaning() {
+        for path in ["postgres/bin", "/opt/SBCO resources/postgres/bin", ".", ""] {
+            assert_eq!(compatible_tool_path(Path::new(path)), Path::new(path));
+        }
+        #[cfg(not(windows))]
+        assert_eq!(
+            compatible_tool_path(Path::new(r"\\?\C:\Program Files\SBCO")),
+            Path::new(r"\\?\C:\Program Files\SBCO")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_tool_paths_preserve_namespaces_and_only_simplify_safe_drive_paths() {
+        assert_eq!(
+            compatible_tool_path(Path::new(r"\\?\C:\Program Files\SBCO\postgres\bin")),
+            Path::new(r"C:\Program Files\SBCO\postgres\bin")
+        );
+        for path in [
+            r"\\server\share\SBCO",
+            r"\\?\UNC\server\share\SBCO",
+            r"\\.\PhysicalDrive0",
+            r"\\?\Volume{00000000-0000-0000-0000-000000000000}\SBCO",
+            r"\\?\C:\SBCO\NUL",
+            r"\\?\C:\SBCO\trailing.",
+            r"\\?\C:\SBCO\trailing ",
+        ] {
+            assert_eq!(compatible_tool_path(Path::new(path)), Path::new(path));
+        }
+        let long = format!(r"\\?\C:\{}\SBCO", "nested\\".repeat(45));
+        assert_eq!(compatible_tool_path(Path::new(&long)), Path::new(&long));
+    }
+
+    #[cfg(windows)]
+    fn copy_test_resources(source: &Path, destination: &Path) {
+        std::fs::create_dir_all(destination).unwrap();
+        for entry in std::fs::read_dir(source).unwrap() {
+            let entry = entry.unwrap();
+            let kind = entry.file_type().unwrap();
+            let target = destination.join(entry.file_name());
+            if kind.is_dir() {
+                copy_test_resources(&entry.path(), &target);
+            } else {
+                assert!(
+                    kind.is_file(),
+                    "resources must not contain links or devices"
+                );
+                std::fs::copy(entry.path(), target).unwrap();
+            }
+        }
+    }
+
+    #[test]
     fn windows_initialization_uses_postgresql_builtin_unicode_locale() {
         assert_eq!(
             initdb_locale_arguments(true),
@@ -624,13 +687,35 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sbco-lifecycle-{}", Uuid::new_v4()));
         let resources =
             PathBuf::from(std::env::var("SBCO_TEST_RESOURCES").expect("resource directory"));
+        // Reproduce installed Tauri paths, not just the ordinary checkout paths.
+        // PostgreSQL probes a sibling executable through a Windows command shell;
+        // verbatim prefixes and spaces must both be present at this boundary.
+        #[cfg(windows)]
+        let (startup_root, resources) = {
+            let installed_resources = root.join("Program Files/SBCO");
+            copy_test_resources(&resources, &installed_resources);
+            let root = std::fs::canonicalize(&root).unwrap();
+            let resources = std::fs::canonicalize(&installed_resources).unwrap();
+            for path in [&root, &resources] {
+                assert!(matches!(
+                    path.components().next(),
+                    Some(std::path::Component::Prefix(prefix))
+                        if matches!(prefix.kind(), std::path::Prefix::VerbatimDisk(_))
+                ));
+            }
+            assert!(resources.to_string_lossy().contains("Program Files"));
+            eprintln!("lifecycle stage: verbatim Windows resources with spaces");
+            (root, resources)
+        };
+        #[cfg(not(windows))]
+        let startup_root = root.clone();
         eprintln!("lifecycle stage: initialize PostgreSQL");
         let pg = TestPostgres(
-            LocalPostgres::start(&root, &resources).expect("initialize local PostgreSQL"),
+            LocalPostgres::start(&startup_root, &resources).expect("initialize local PostgreSQL"),
         );
         eprintln!("lifecycle stage: reject second instance");
         assert!(
-            LocalPostgres::start(&root, &resources).is_err(),
+            LocalPostgres::start(&startup_root, &resources).is_err(),
             "second instance must be rejected"
         );
         eprintln!("lifecycle stage: connect and migrate");
@@ -731,7 +816,7 @@ mod tests {
         eprintln!("lifecycle stage: stop PostgreSQL");
         drop(pg);
         eprintln!("lifecycle stage: restart restored database");
-        let pg = TestPostgres(LocalPostgres::start(&root, &resources).unwrap());
+        let pg = TestPostgres(LocalPostgres::start(&startup_root, &resources).unwrap());
         eprintln!("lifecycle stage: connect and migrate");
         let db = sbco_infrastructure::Database::connect(&pg.url)
             .await

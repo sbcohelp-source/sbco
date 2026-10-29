@@ -49,6 +49,7 @@ jobs:
           key: windows-2025-rust-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'rust-toolchain.toml') }}-standalone-${{ github.sha }}
           restore-keys: |
             windows-2025-rust-v1-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', 'rust-toolchain.toml') }}-
+            windows-2025-rust-v1-
       - name: Prepare pinned build tools
         run: |
           npm install --global yarn@1.22.22
@@ -111,6 +112,8 @@ jobs:
           $env:SBCO_POSTGRES_BIN = $null
           $env:SBCO_POSTGRES_SHARE = $null
           New-Item -ItemType Directory -Path artifacts/windows-standalone-tests -Force | Out-Null
+          cargo test --release --target x86_64-pc-windows-msvc --manifest-path apps/desktop/src-tauri/Cargo.toml --locked postgres::tests -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Standalone PostgreSQL unit tests failed.' }
           cargo test --release --target x86_64-pc-windows-msvc --manifest-path apps/desktop/src-tauri/Cargo.toml --locked postgres::tests::local_database_survives_restart_and_restores_to_a_new_database -- --ignored --nocapture 2>&1 | Tee-Object -FilePath artifacts/windows-standalone-tests/lifecycle.log
           if ($LASTEXITCODE -ne 0) { throw 'Standalone Windows PostgreSQL lifecycle/recovery test failed.' }
       - name: Retain standalone lifecycle test log
