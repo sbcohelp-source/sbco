@@ -1,6 +1,6 @@
 # Connected desktop implementation and Windows qualification
 
-Status: connected HTTPS desktop mode implemented, 28 October 2026. The installed Linux client has passed a real HTTPS acceptance test against the isolated Rust API. Windows installer build automation is present; Windows installation, service operation and office deployment still require qualification. The default standalone offline application remains available and has passed a new native regression test.
+Status: 29 October 2026. Connected HTTPS desktop mode is implemented. The installed Linux client passed real HTTPS acceptance against the isolated Rust API. Windows MSI installation/repair/uninstall, native transport tests, configured server services and scheduled backup/restore passed on hosted Windows Server 2025. Actual Windows desktop GUI and Windows 10/11 office deployment remain separate qualification gates. The default standalone offline application remains available and has passed a new native regression test.
 
 ## Deployment choices
 
@@ -67,15 +67,17 @@ Windows scripts and workflows build a separate connected MSI, standalone MSI and
 - The rebuilt default standalone Linux installer passed `tests/native_desktop.py` with networking disabled: first-run setup, local sign-in, setup import, a 251-row workbook, PA verification/search, onboarding persistence, automatic backup/checksum/private permissions and DPR/MPR reporting.
 - Latest local evidence logs are `/tmp/sbco-connected-native-acceptance.log`, `/tmp/sbco-connected-final-check.log` and `/tmp/sbco-connected-offline-regression.log`. Screenshots were visually inspected. These temporary logs are local evidence, not release payloads.
 
+Hosted Windows evidence also includes [server/client installer smoke](https://github.com/sbcohelp-source/sbco/actions/runs/40876179179), [clean standalone installer smoke](https://github.com/sbcohelp-source/sbco/actions/runs/40876658266), [configured server lifecycle](https://github.com/sbcohelp-source/sbco/actions/runs/40883757329) and [SYSTEM backup/restore](https://github.com/sbcohelp-source/sbco/actions/runs/40883720195). These results do not claim that the installed Windows client GUI has completed a real office workflow.
+
 ## Remaining Windows and office acceptance gates
 
-1. Execute the Windows installer workflow successfully and inspect the resulting MSI contents, dependencies, branding and distinct upgrade identities. Sign/timestamp releases when the signing identity is available; an unsigned build is not a signed release.
+1. Generated MSI contents, dependencies, branding and distinct upgrade identities have passed hosted checks. Sign/timestamp accepted releases when the signing identity is available; the current artifacts are unsigned.
 2. On clean, supported Windows 10/11 target machines, test connected installation with the bundled WebView2 prerequisite, trusted organizational certificates, startup, server-address persistence and real native Save dialogs. Confirm no database service or database credentials on connected clients.
 3. Against both the Linux host and an actual Windows 10/11 host, run complete setup/transaction imports, PA verification, supervisor review, corrections, correspondence and reports from at least two installed clients. Verify role/session revocation, revision conflicts, interrupted uploads and uncertain-response operator recovery.
 4. Qualify Windows host service start before login, logoff/reboot survival, clean stop, crash recovery, occupied ports, disk-full behavior and database startup delays. Test the packaged native service wrappers; registering a console binary alone does not establish correct SCM lifecycle handling.
 5. Verify host configuration ACLs, loopback-only PostgreSQL/API listeners, HTTPS firewall scope, certificate renewal, daily backup checksum/retention and a full restore rehearsal preserving accounts, audit history and issued PDFs.
 6. Test repair, a real next-version upgrade, rollback/recovery and uninstall data retention on Windows. Earlier Linux same-version reinstall tests are not Windows or future-version upgrade evidence.
-7. Qualify the standalone Windows PostgreSQL package separately. Its initialization now requests PostgreSQL's built-in `C.UTF-8` locale provider to avoid dependence on a Windows libc locale; the argument-selection test passed, but actual Windows initialization remains a native acceptance gate.
+7. The standalone Windows native PostgreSQL lifecycle and installer smoke pass, including actual initialization, backup, restore and restart using the built-in `C.UTF-8` locale provider. Complete its installed desktop GUI flow and real Windows 10/11 office checks separately.
 8. Confirm the chosen office hostname/network, exact OS servicing baseline, operator training and pilot approval. Windows 10/11 host qualification is not replaced by a Windows Server build runner.
 
 No Windows-machine acceptance, signing verification or multi-computer office pilot is claimed by the Linux results. The deployment plan records host packaging and rollout status separately.

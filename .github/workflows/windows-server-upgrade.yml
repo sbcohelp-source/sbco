@@ -1,0 +1,69 @@
+name: Rehearse Windows server same-version upgrade
+on:
+  workflow_dispatch:
+    inputs:
+      old_source_run_id:
+        description: Successful older server installer build
+        required: true
+        default: "40873108070"
+        type: string
+      new_source_run_id:
+        description: Successful corrected server installer build
+        required: true
+        default: "40881136580"
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  server-upgrade:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Verify both source builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLD_RUN: ${{ inputs.old_source_run_id }}
+          NEW_RUN: ${{ inputs.new_source_run_id }}
+        run: |
+          if ($env:OLD_RUN -eq $env:NEW_RUN) { throw 'Choose distinct source builds.' }
+          New-Item -ItemType Directory -Path artifacts/windows-upgrade-logs -Force | Out-Null
+          foreach ($entry in @(@{name='old';id=$env:OLD_RUN},@{name='new';id=$env:NEW_RUN})) {
+            if ($entry.id -notmatch '^[0-9]{1,20}$') { throw 'Invalid source run ID.' }
+            $run=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$($entry.id)" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $run.repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.path -ne '.github/workflows/windows-installers.yml' -or $run.event -ne 'workflow_dispatch' -or $run.conclusion -ne 'success') { throw 'Only successful same-repository manual installer builds are accepted.' }
+            $run | Select-Object id,head_sha,html_url,path,conclusion | ConvertTo-Json | Set-Content "artifacts/windows-upgrade-logs/$($entry.name)-source.json"
+          }
+      - uses: actions/download-artifact@v4
+        with:
+          name: sbco-server-windows-x64-unsigned
+          path: artifacts/windows-upgrade-input/old
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.old_source_run_id }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: sbco-server-windows-x64-unsigned
+          path: artifacts/windows-upgrade-input/new
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.new_source_run_id }}
+      - name: Check upgrade guards
+        run: ./scripts/test-windows-upgrade-guards.ps1
+      - name: Rehearse configured same-version major upgrade
+        run: ./scripts/test-windows-server-runtime.ps1 -ArtifactDirectory artifacts/windows-upgrade-input/old -UpgradeArtifactDirectory artifacts/windows-upgrade-input/new -LogDirectory artifacts/windows-upgrade-logs
+      - name: Retain upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-server-upgrade-${{ inputs.old_source_run_id }}-${{ inputs.new_source_run_id }}
+          path: artifacts/windows-upgrade-logs/
+          if-no-files-found: warn
+          retention-days: 14

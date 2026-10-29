@@ -1,6 +1,6 @@
 #requires -Version 7.0
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][string]$ArtifactDirectory,[Parameter(Mandatory=$true)][string]$LogDirectory)
+param([Parameter(Mandatory=$true)][string]$ArtifactDirectory,[Parameter(Mandatory=$true)][string]$LogDirectory,[string]$UpgradeArtifactDirectory="")
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if (-not $IsWindows -or -not [Environment]::Is64BitProcess -or $env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or -not $env:RUNNER_TEMP) { throw 'Server rehearsal requires an ephemeral GitHub-hosted Windows x64 runner.' }
@@ -14,6 +14,7 @@ $token=[guid]::NewGuid().ToString('N')
 $privateRoot=Join-Path $env:RUNNER_TEMP "sbco-server-$token"
 $installer=New-Object -ComObject WindowsInstaller.Installer
 $productCode=$null; $msiStarted=$false; $timedOut=$false; $fixtureCreated=$false; $trustedThumbprint=$null; $certificate=$null; $rsa=$null; $adminPassword=$null; $session=$null
+$upgradeProductCode=$null;$upgradeResult=$null
 $serviceNames=@('SBCOPostgres','SBCOApi','SBCOWorker','SBCOWeb','SBCOHttps')
 function Read-MsiProperty($Database,[string]$Property) {
     $view=$Database.OpenView("SELECT ``Value`` FROM ``Property`` WHERE ``Property``='$Property'")
@@ -103,6 +104,13 @@ try {
         if((Read-MsiProperty $database 'ProductName') -cne 'SBCO Server' -or (Read-MsiProperty $database 'Manufacturer') -cne 'S K Singh' -or [guid](Read-MsiProperty $database 'UpgradeCode') -ne [guid]'126a311d-74cf-4427-9422-12b3182ea43e'){throw 'Unexpected server MSI identity.'}
         if($installer.ProductState($productCode) -ne -1){throw 'Server product already registered.'}
     }finally{[Runtime.InteropServices.Marshal]::FinalReleaseComObject($database)|Out-Null}
+    if($UpgradeArtifactDirectory){
+        . (Join-Path $PSScriptRoot 'test-windows-server-upgrade.ps1')
+        $oldDb=$installer.OpenDatabase($msi.FullName,0)
+        try{$oldVersion=Read-MsiProperty $oldDb 'ProductVersion'}finally{[Runtime.InteropServices.Marshal]::FinalReleaseComObject($oldDb)|Out-Null}
+        $upgradePackage=Read-UpgradePackage $UpgradeArtifactDirectory $productCode $oldVersion
+        $upgradeProductCode=$upgradePackage.code
+    }
     $msiStarted=$true;Invoke-RehearsalMsi '/i' $msi.FullName 'server-install'
     . (Join-Path $installPath 'server\Server-Common.ps1')
     Set-PrivateDirectory $privateRoot
@@ -170,6 +178,7 @@ if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
     $filter=@{office='WIN-SMOKE';status=$null;search=$null;from_date=$null;to_date=$null;queue='all'}
     $report=Call-Server 'query' @{kind='report';report='Transactions';filter=$filter}
     if($report.totals.total -ne 2){throw 'Live fixture report total mismatch.'}
+    if($UpgradeArtifactDirectory){Invoke-ServerUpgradeFixture $upgradePackage}else{
     $pdfPath=Join-Path $privateRoot 'report.pdf'
     Invoke-WebRequest -Uri 'https://localhost/api/v1/export' -Method Post -ContentType 'application/json' -Headers @{'X-SBCO-Request'='1'} -WebSession $session -Body (@{report='Transactions';filter=$filter;letter_id=$null}|ConvertTo-Json) -OutFile $pdfPath -TimeoutSec 90
     if([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($pdfPath),0,5) -cne '%PDF-'){throw 'Windows PDF export failed.'}
@@ -179,6 +188,7 @@ if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
     if((Call-Server 'me' $null $trainingHeaders).role -cne 'Pa'){throw 'Training role switching failed.'}
     $null=Call-Server 'training/reset' @{generation=$training.generation;confirmation='DELETE TRAINING'}
     if((Call-Server 'training').available -or (Call-Server 'query' @{kind='report';report='Transactions';filter=$filter}).totals.total -ne 2){throw 'Training reset affected live fixture records.'}
+    }
     # Terminate only the fixture API child of its registered wrapper, not any other process.
     $apiService=Get-CimInstance Win32_Service -Filter "Name='SBCOApi'"
     $apiChildren=@(Get-CimInstance Win32_Process -Filter "Name='sbco-api.exe'" | Where-Object { $_.ParentProcessId -eq $apiService.ProcessId -and $_.ExecutablePath -ieq (Join-Path $installPath 'bin\sbco-api.exe') })
@@ -197,13 +207,21 @@ if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
     Write-Utf8 $maintenance ("`$ErrorActionPreference='Stop'`n& "+"'"+(Join-Path $installPath 'server\Manage-Services.ps1').Replace("'","''")+"' -Action Stop`n& '"+(Join-Path $installPath 'server\Manage-Services.ps1').Replace("'","''")+"' -Action Resume")
     Invoke-PrivatePowerShell $maintenance 'service-restart' 300
     Assert-ServicesReady
-    Invoke-RehearsalMsi '/fa' $msi.FullName 'configured-server-repair'
+    $repairMsi=if($UpgradeArtifactDirectory){$upgradePackage.path}else{$msi.FullName}
+    Invoke-RehearsalMsi '/fa' $repairMsi 'configured-server-repair'
     Assert-ServicesReady
     if((Call-Server 'query' @{kind='report';report='Transactions';filter=$filter}).totals.total -ne 2){throw 'Restart/repair lost fixture records.'}
     Invoke-RehearsalMsi '/x' $productCode 'configured-server-uninstall'
     if(Get-Service -Name 'SBCO*' -ErrorAction SilentlyContinue){throw 'Uninstall retained a server service.'}
     if(-not (Test-Path -LiteralPath (Join-Path $dataPath 'database\cluster\global\pg_control')) -or (Get-Content -LiteralPath (Join-Path $dataPath 'ownership.json') -Raw|ConvertFrom-Json).test_token -cne $token){throw 'Uninstall did not preserve fixture database ownership.'}
+    if($UpgradeArtifactDirectory){
+        if(Get-ScheduledTask -TaskName 'SBCO Server Daily Backup' -TaskPath '\' -ErrorAction SilentlyContinue){throw 'Upgraded uninstall retained backup task.'}
+        if((Get-FileHash -LiteralPath $upgradeResult.archive_path -Algorithm SHA256).Hash -cne $upgradeResult.archive_sha256){throw 'Upgraded uninstall changed preserved archive.'}
+        $upgradeResult.Remove('archive_path');$upgradeResult.result='passed';$upgradeResult.api_crash_recovery=$true;$upgradeResult.restart_and_repair=$true;$upgradeResult.uninstall_preserves_database_and_archive=$true
+        $upgradeResult|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $LogDirectory 'server-upgrade.json')
+    }else{
     @{result='passed';scope='disposable Windows2025 shared server';source_msi_sha256=$expectedHash;real_guided_setup=$true;services=5;trusted_https=$true;secure_login=$true;template=$true;worker_import_rows=2;pdf=$true;training_reset_isolated=$true;api_crash_recovery=$true;restart_and_repair=$true;uninstall_preserves_database=$true}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $LogDirectory 'server-rehearsal.json')
+    }
 }catch{
     $failure=$_.Exception.Message+"`n"+$_.ScriptStackTrace
     if($adminPassword){$failure=$failure.Replace($adminPassword,'[REDACTED]')}
@@ -212,7 +230,7 @@ if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
     try{Save-SafeDiagnostics}catch{Write-Warning 'Some fixture diagnostics could not be collected.'}
     throw 'Shared server rehearsal failed; see retained sanitized diagnostics.'
 }finally{
-    if($msiStarted -and -not $timedOut -and $null -ne $productCode -and $installer.ProductState($productCode) -ne -1){try{Invoke-RehearsalMsi '/x' $productCode 'server-cleanup-uninstall'}catch{Write-Warning 'Installer cleanup failed; disposable runner logs retained.'}}
+    foreach($cleanupCode in @($upgradeProductCode,$productCode)|Where-Object {$_}|Select-Object -Unique){if($msiStarted -and -not $timedOut -and $installer.ProductState($cleanupCode) -ne -1){try{Invoke-RehearsalMsi '/x' $cleanupCode 'server-cleanup-uninstall'}catch{Write-Warning 'Installer cleanup failed; disposable runner logs retained.'}}}
     if($trustedThumbprint){$store=[Security.Cryptography.X509Certificates.X509Store]::new('Root','LocalMachine');try{$store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite);foreach($cert in $store.Certificates.Find([Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,$trustedThumbprint,$false)){$store.Remove($cert)}}finally{$store.Close()}}
     if($fixtureCreated -and -not $timedOut -and -not (Get-Service -Name 'SBCO*' -ErrorAction SilentlyContinue) -and -not (Get-ScheduledTask -TaskName 'SBCO Server Daily Backup' -TaskPath '\' -ErrorAction SilentlyContinue)){$owned=Get-Content -LiteralPath (Join-Path $dataPath 'ownership.json') -Raw|ConvertFrom-Json;if($owned.test_token -ceq $token){Remove-Item -LiteralPath $dataPath -Recurse -Force}}
     if(Test-Path -LiteralPath $privateRoot){Remove-Item -LiteralPath $privateRoot -Recurse -Force}
