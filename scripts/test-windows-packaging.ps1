@@ -135,3 +135,30 @@ Write-Host 'PASS actual wrapper answers inherited by child setup script; secure 
 
  } finally { Remove-Variable fixtureImportStatus,batch -Scope Script -ErrorAction SilentlyContinue }
 }
+
+# Shared Rust bundle caches can contain other products and older versions.
+& {
+ $buildAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'build-windows-msi.ps1'),[ref]$null,[ref]$null)
+ foreach($name in @('Get-FreshStandaloneInstaller','Assert-StandaloneOutput')){
+  $definition=$buildAst.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
+  Invoke-Expression $definition.Extent.Text
+ }
+ $fixture=Join-Path ([IO.Path]::GetTempPath()) ('sbco-msi-selection-'+[guid]::NewGuid().ToString('N'))
+ try {
+  [IO.Directory]::CreateDirectory($fixture)|Out-Null
+  $expected='SBCO_0.1.0_x64_en-US.msi';$started=[DateTime]::UtcNow.AddMinutes(-1)
+  foreach($name in @($expected,'SBCO Client_0.1.0_x64_en-US.msi','SBCO_0.0.9_x64_en-US.msi')){[IO.File]::WriteAllText((Join-Path $fixture $name),'fixture')}
+  [IO.File]::SetLastWriteTimeUtc((Join-Path $fixture $expected),$started.AddDays(-1))
+  try{Get-FreshStandaloneInstaller $fixture $started $expected;throw 'Stale installer unexpectedly selected.'}catch{if($_.Exception.Message -notlike 'Build did not produce the expected fresh standalone MSI*'){throw}}
+  [IO.File]::SetLastWriteTimeUtc((Join-Path $fixture $expected),[DateTime]::UtcNow)
+  $selected=@(Get-FreshStandaloneInstaller $fixture $started $expected)
+  if($selected.Count -ne 1 -or $selected[0].Name -cne $expected){throw 'Bundle cache contaminated standalone selection.'}
+  try{Assert-StandaloneOutput $fixture $expected;throw 'Mixed output unexpectedly accepted.'}catch{if($_.Exception.Message -notlike 'Output directory contains another installer*'){throw}}
+  Remove-Item -LiteralPath (Join-Path $fixture 'SBCO Client_0.1.0_x64_en-US.msi'),(Join-Path $fixture 'SBCO_0.0.9_x64_en-US.msi')
+  [IO.File]::WriteAllText((Join-Path $fixture 'SBCO Client_0.1.0_x64_en-US.msi.sha256'),'fixture')
+  try{Assert-StandaloneOutput $fixture $expected;throw 'Foreign sidecar unexpectedly accepted.'}catch{if($_.Exception.Message -notlike 'Output directory contains another installer*'){throw}}
+  Remove-Item -LiteralPath (Join-Path $fixture 'SBCO Client_0.1.0_x64_en-US.msi.sha256')
+  Assert-StandaloneOutput $fixture $expected
+  Write-Host 'PASS standalone artifact selection rejects stale/cross-product cache entries and mixed output directories.'
+ }finally{if(Test-Path -LiteralPath $fixture){Remove-Item -LiteralPath $fixture -Recurse -Force}}
+}
