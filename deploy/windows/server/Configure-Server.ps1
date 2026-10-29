@@ -8,10 +8,15 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 Assert-Administrator
 $setupLock = New-Object Threading.Mutex($false, 'Global\SBCOServerSetup')
-if (-not $setupLock.WaitOne(0)) { throw 'Server setup is already running.' }
+$setupAcquired = $false
+try {
+    try { $setupAcquired = $setupLock.WaitOne(0) } catch [Threading.AbandonedMutexException] { $setupAcquired = $true }
+} catch { $setupLock.Dispose(); throw }
+if (-not $setupAcquired) { $setupLock.Dispose(); throw 'Server setup or maintenance is already running.' }
 $createdServices = New-Object 'System.Collections.Generic.List[string]'
 $createdFirewall = $false
 $setupFailed = $false
+$offerBackups = $false
 try {
     if (Read-OwnedInstallation) {
         Resume-ServerServices
@@ -195,6 +200,7 @@ https://$hostnameValue {
     }
     Write-Utf8 (Join-Path $DataRoot 'configured.json') (@{hostname=$hostnameValue;configured_at=[DateTime]::UtcNow.ToString('o');firewall=$allowFirewall;ready=$true} | ConvertTo-Json)
     Write-Host "SBCO Server is ready at https://$hostnameValue. Support: sbcohelp@gmail.com"
+    $offerBackups = $true
 }
 catch {
     foreach($name in @('SBCOHttps','SBCOWeb','SBCOWorker','SBCOApi','SBCOPostgres')) {
@@ -210,7 +216,14 @@ catch {
 }
 finally {
     $adminPassword=$null
-    $setupLock.ReleaseMutex();$setupLock.Dispose()
+    if ($setupAcquired) { $setupLock.ReleaseMutex() };$setupLock.Dispose()
+}
+# Schedule after releasing the setup lock. A scheduling failure does not undo a healthy server.
+if ($offerBackups -and -not $setupFailed) {
+    if ((Read-Host 'Enable daily backups at 02:00 and retain the latest 14 successful backups? [y/N]') -match '^(y|yes)$') {
+        try { & (Join-Path $PSScriptRoot 'Set-BackupSchedule.ps1') -Action Enable -Time '02:00' -Retention 14 | Out-Null }
+        catch { Write-Warning 'The server is ready, but the backup schedule could not be enabled. Run Set-BackupSchedule.ps1 as administrator to retry.' }
+    }
 }
 Read-Host 'Press Enter to close' | Out-Null
 

@@ -127,7 +127,7 @@ Standalone desktop backups run daily while the app is open, retain 14 automatic 
 - Run the Windows MSI build action, test server/client installation and recovery on the selected Windows 10/11 builds, and obtain signing identities. The connected client has passed installed Linux HTTPS tests; Windows installation is not yet verified.
 - Obtain office-operator approval and reconcile real office data using [the acceptance checklist](docs/ACCEPTANCE_CHECKLIST.md).
 - Test Windows LAN clients, target OS/printers, manual screen-reader use, realistic workloads and future application-version upgrades.
-- Run hosted CI and a real HTTPS deployment with an approved backup destination. These remain deferred under local-first delivery.
+- Hosted application and Linux recovery CI passed on commit `019116d` ([run evidence](https://github.com/sbcohelp-source/sbco/actions/runs/40681285697)). Complete Windows installer checks and a real HTTPS deployment with an approved backup destination.
 - Legacy conversion remains deferred by the fresh-database decision; macOS is outside the latest requested deployment arrangements.
 
 See [implementation status](docs/IMPLEMENTATION_STATUS.md) for completed local evidence and remaining gates. No production readiness is claimed.

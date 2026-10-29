@@ -115,10 +115,37 @@ test("administration and reports are accessible at desktop and mobile sizes", as
 test("mobile navigation retains focus, closes with Escape and restores the trigger", async ({
   page,
 }) => {
+  // Release late setup data only after keyboard focus has moved to the navigation trigger.
+  let guideStep = "welcome";
+  let releaseOnboarding!: () => void;
+  const onboardingReady = new Promise<void>((resolve) => {
+    releaseOnboarding = resolve;
+  });
+  await page.route("**/api/v1/query", async (route) => {
+    if (route.request().postDataJSON()?.kind !== "onboarding") return route.continue();
+    const response = await route.fetch();
+    await onboardingReady;
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), step: guideStep, completed: false },
+    });
+  });
+  // Keep this focus regression independent of the operator fixture's saved progress.
+  await page.route("**/api/v1/command", async (route) => {
+    const command = route.request().postDataJSON()?.command;
+    if (command?.kind !== "save_onboarding") return route.continue();
+    guideStep = command.step;
+    await route.fulfill({ json: {} });
+  });
   await login(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const open = page.getByRole("button", { name: "Open navigation" });
+  await expect(open).toBeVisible();
   await open.focus();
+  await expect(open).toBeFocused();
+  releaseOnboarding();
+  await expect(page.getByRole("heading", { level: 2, name: /^Welcome to SBCO,/ })).toBeVisible();
+  await expect(open).toBeFocused();
   await page.keyboard.press("Enter");
   const close = page.getByRole("button", { name: "Close navigation" });
   await expect(close).toBeFocused();
@@ -130,6 +157,8 @@ test("mobile navigation retains focus, closes with Escape and restores the trigg
   await page.keyboard.press("Escape");
   await expect(page.getByRole("navigation")).not.toBeVisible();
   await expect(open).toBeFocused();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Offices", exact: true })).toBeFocused();
   await open.click();
   await page.getByRole("link", { name: "Reports", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Reports", exact: true })).toBeVisible();

@@ -50,9 +50,9 @@ The workflow runs on `windows-2025`, uploads the MSI and checksums as a temporar
 
 ## Native Windows validation still required
 
-The launcher currently has a Windows executable suffix but retains platform assumptions from the Linux release. Before distributing an MSI, build and test on Windows 10 and Windows 11, including these concrete checks:
+The launcher implements Windows executable paths and selects PostgreSQL’s builtin C.UTF-8 locale for new Windows clusters. Native Windows 10 and Windows 11 qualification is still required before distribution, including these checks:
 
-1. Verify `initdb --locale=C.UTF-8` works with the selected Windows PostgreSQL distribution. If it does not, implement and test an explicit Windows locale/provider choice for new clusters; do not silently change existing cluster collation.
+1. Verify the implemented `initdb --locale-provider=builtin --builtin-locale=C.UTF-8` initialization with the selected Windows PostgreSQL distribution, including restart and recovery. Existing cluster collation must remain unchanged.
 2. Verify every PostgreSQL DLL dependency and extension loads. The existing `LD_LIBRARY_PATH` setting is Linux-specific; the Windows distribution must resolve its DLLs through verified Windows search paths.
 3. Verify the application-data directory, credentials, temporary password files and backups are accessible only to the intended user. Unix modes do not establish Windows ACLs.
 4. Install on clean machines, including a machine without WebView2 and with networking disabled. Check ordinary-user startup, initialization, Unicode/spaced user paths, port conflicts, one-instance locking and shutdown.

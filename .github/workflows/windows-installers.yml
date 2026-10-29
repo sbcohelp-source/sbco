@@ -42,6 +42,7 @@ jobs:
             if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
           }
           ./scripts/test-windows-packaging.ps1
+          ./scripts/test-windows-backups.ps1
           yarn install --frozen-lockfile
           if ($LASTEXITCODE -ne 0) { throw 'JavaScript dependencies failed to install.' }
       - name: Download pinned official Windows dependencies
@@ -78,6 +79,10 @@ jobs:
             artifacts/windows-client/*.sha256
           if-no-files-found: error
           retention-days: 14
+      - name: Verify native connected-client transport on Windows
+        run: |
+          cargo test --release --target x86_64-pc-windows-msvc --manifest-path apps/desktop/src-tauri/Cargo.toml --features connected-client --locked transport::tests
+          if ($LASTEXITCODE -ne 0) { throw 'Windows connected-client transport tests failed.' }
       - name: Save Windows compilation cache
         if: ${{ !cancelled() && steps.rust-cache.outputs.cache-hit != 'true' && steps.rust-cache.outputs.cache-primary-key != '' }}
         continue-on-error: true

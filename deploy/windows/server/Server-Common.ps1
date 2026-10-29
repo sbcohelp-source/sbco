@@ -82,6 +82,8 @@ function Set-OwnedFirewall([bool]$Enabled) {
 }
 function Remove-ServerServices {
     if (-not (Read-OwnedInstallation)) { return }
+    . (Join-Path $PSScriptRoot 'Backup-Common.ps1')
+    Remove-OwnedBackupSchedule
     Stop-ServerServices
     foreach ($name in @('SBCOHttps', 'SBCOWeb', 'SBCOWorker', 'SBCOApi', 'SBCOPostgres')) {
         if (Get-Service -Name $name -ErrorAction SilentlyContinue) {

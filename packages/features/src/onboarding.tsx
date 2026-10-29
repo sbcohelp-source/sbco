@@ -63,6 +63,7 @@ export function GettingStarted({
   const [dismissed, setDismissed] = useState(false);
   const [retry, setRetry] = useState(0);
   const title = useRef<HTMLHeadingElement>(null);
+  const guide = useRef<HTMLElement>(null);
   const saving = useRef(false);
   const admin = actor.role === "Administrator";
   const steps = admin ? adminSteps : staffSteps;
@@ -90,7 +91,11 @@ export function GettingStarted({
   }, [actor.id, retry]);
   const incomplete = state !== null && !state.completed;
   useEffect(() => {
-    if (incomplete && !dismissed) title.current?.focus();
+    if (!incomplete || dismissed) return;
+    const focused = document.activeElement;
+    // Late setup data must not take focus from controls the operator is already using.
+    if (focused && focused !== document.body && !guide.current?.contains(focused)) return;
+    title.current?.focus();
   }, [step, incomplete, dismissed]);
 
   async function refresh() {
@@ -185,7 +190,7 @@ export function GettingStarted({
     );
 
   return (
-    <section aria-label="Setup wizard" className="flex flex-col gap-5">
+    <section ref={guide} aria-label="Setup wizard" className="flex flex-col gap-5">
       <Card>
         <CardHeader>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
