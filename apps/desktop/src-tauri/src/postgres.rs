@@ -148,10 +148,17 @@ fn run(bin: &Path, lib: &Path, name: &str, args: &[&str]) -> Result<(), String> 
             ""
         }
     );
-    let output = Command::new(executable(bin, name))
-        .args(args)
-        .env("LD_LIBRARY_PATH", lib)
-        .output();
+    let mut command = Command::new(executable(bin, name));
+    command.args(args).env("LD_LIBRARY_PATH", lib);
+    #[cfg(windows)]
+    if name == "pg_ctl" && args.last() == Some(&"start") {
+        // pg_ctl's persistent Windows CMD child inherits capture pipes even with -l.
+        // Wait for pg_ctl itself; PostgreSQL diagnostics already go to postgres.log.
+        command
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+    }
+    let output = command.output();
     #[cfg(test)]
     eprintln!(
         "lifecycle tool end: {name}, success={}",
