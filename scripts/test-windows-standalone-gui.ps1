@@ -127,47 +127,63 @@ function Stop-GuiProcesses {
     }
     if ($application -and (Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $application })) { throw 'Fixture application remains running.' }
 }
+function Test-GuiDescendantIdentity($Child,$Root,[object[]]$Processes) {
+    $current=$Child
+    for ($depth=0;$current -and $depth -lt 200;$depth++) {
+        if ($current.ProcessId -eq $Root.ProcessId) {
+            return [bool]($current.CreationDate -eq $Root.CreationDate -and $current.ExecutablePath -ieq $Root.ExecutablePath)
+        }
+        $parents=@($Processes | Where-Object { $_.ProcessId -eq $current.ParentProcessId })
+        if ($parents.Count -ne 1 -or -not (Test-GuiChildIdentity $current $parents[0])) { return $false }
+        $current=$parents[0]
+    }
+    return $false
+}
+function Confirm-GuiDebugListener([string]$Phase) {
+    $requestPath=Join-Path $privateRoot ($Phase+'-debug-request.json')
+    $ackPath=Join-Path $privateRoot ($Phase+'-debug-verified')
+    if ((Test-Path -LiteralPath $ackPath) -or -not (Test-Path -LiteralPath $requestPath)) { return }
+    $request=Get-Content -LiteralPath $requestPath -Raw | ConvertFrom-Json
+    $appIdentity=$knownProcesses[[string]$request.application_pid]
+    $appCurrent=Get-CimInstance Win32_Process -Filter "ProcessId=$([int]$request.application_pid)"
+    if (-not $appIdentity -or $appIdentity.path -ine $application -or -not $appCurrent -or $appCurrent.CreationDate -ne $appIdentity.created -or $appCurrent.ExecutablePath -ine $application) { throw 'Debug request does not belong to the current fixture application.' }
+    $port=[int]$request.port
+    if ($port -lt 1 -or $port -gt 65535) { throw 'Invalid fixture debugging port.' }
+    $listeners=@(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction Stop)
+    if ($listeners.Count -eq 0) { throw 'Fixture debugging listener is missing.' }
+    $allProcesses=@(Get-CimInstance Win32_Process)
+    foreach ($listener in $listeners) {
+        if ($listener.LocalAddress -notin @('127.0.0.1','::1')) { throw 'Fixture debugging listener is not restricted to loopback.' }
+        $owner=$knownProcesses[[string]$listener.OwningProcess]
+        $current=Get-CimInstance Win32_Process -Filter "ProcessId=$([int]$listener.OwningProcess)"
+        if (-not $owner -or -not $current -or $current.CreationDate -ne $owner.created -or $current.ExecutablePath -ine $owner.path) { throw 'Debugging listener does not belong to an exact fixture process.' }
+        if (-not (Test-GuiDescendantIdentity $current $appCurrent $allProcesses)) { throw 'Debugging listener is outside the exact application process tree.' }
+    }
+    [IO.File]::WriteAllText($ackPath,'verified')
+}
 function Protect-GuiStartupText([string]$Text,[string[]]$Secrets) {
     foreach ($secret in $Secrets) { if ($secret) { $Text=$Text.Replace($secret,'[REDACTED]') } }
     $Text=[regex]::Replace($Text,'postgres(?:ql)?://[^\s"<>]+','[REDACTED_DATABASE_URI]')
     return $Text.Substring(0,[Math]::Min(3000,$Text.Length))
 }
-function Test-InstalledGuiStartup {
-    # A separate first start distinguishes application failure from the driver's
-    # launch deadline. No administrator credentials exist during this preflight.
-    $stdout=Join-Path $privateRoot 'startup.out';$stderr=Join-Path $privateRoot 'startup.err'
-    $process=Start-Process -FilePath $application -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-    $watch=[Diagnostics.Stopwatch]::StartNew();$windowSeen=$false;$exitCode=$null
+function Save-GuiStartupEvidence([string]$Phase) {
+    # Raw child output stays private. Discover generated secrets before exporting
+    # any bounded text; if discovery fails, omit the text instead of guessing.
+    $result=@{}
     try {
-        while ($watch.Elapsed.TotalSeconds -lt 120) {
-            Remember-GuiProcesses
-            $process.Refresh()
-            if ($process.HasExited) { $exitCode=$process.ExitCode;break }
-            if ($process.MainWindowHandle -ne [IntPtr]::Zero -and $process.MainWindowTitle -ceq 'SBCO Voucher Verification') { $windowSeen=$true;break }
-            Start-Sleep -Milliseconds 250
+        $secrets=@(foreach ($root in $knownRoots) {
+            Assert-OwnedGuiRoot $root $token $allowedRoots
+            $databaseConfig=Join-Path $root 'database.json'
+            if (Test-Path -LiteralPath $databaseConfig) { (Get-Content -LiteralPath $databaseConfig -Raw | ConvertFrom-Json).password }
+        })
+        $accountFile=Join-Path $privateRoot 'account.json'
+        if (Test-Path -LiteralPath $accountFile) { $secrets+=@((Get-Content -LiteralPath $accountFile -Raw | ConvertFrom-Json).password) }
+        foreach ($stream in @('stdout','stderr')) {
+            $path=Join-Path $privateRoot ($Phase+'-application.'+$stream)
+            if (Test-Path -LiteralPath $path) { $result[$stream]=Protect-GuiStartupText ([IO.File]::ReadAllText($path)) $secrets }
         }
-    } finally {
-        $watch.Stop()
-        # Close only this fixture's exact recorded app and PostgreSQL processes.
-        Stop-GuiProcesses
-        $process.Dispose()
-    }
-    $result=@{native_window_seen=$windowSeen;elapsed_seconds=[Math]::Round($watch.Elapsed.TotalSeconds,2);exit_code=$exitCode;credentials_entered=$false}
-    if (-not $windowSeen) {
-        # Read generated database secrets only to remove them, never export the
-        # config itself. If secret discovery fails, omit text rather than guess.
-        try {
-            $secrets=@(foreach ($root in $knownRoots) {
-                Assert-OwnedGuiRoot $root $token $allowedRoots
-                $databaseConfig=Join-Path $root 'database.json'
-                if (Test-Path -LiteralPath $databaseConfig) { (Get-Content -LiteralPath $databaseConfig -Raw | ConvertFrom-Json).password }
-            })
-            $result.stdout=Protect-GuiStartupText ([IO.File]::ReadAllText($stdout)) $secrets
-            $result.stderr=Protect-GuiStartupText ([IO.File]::ReadAllText($stderr)) $secrets
-        } catch { $result.diagnostics='Startup text omitted because safe redaction could not be established.' }
-    }
-    $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory 'startup-preflight.json')
-    if (-not $windowSeen) { throw 'Installed application did not create a native window during direct startup; inspect sanitized preflight evidence.' }
+    } catch { $result=@{diagnostics='Application text omitted because safe redaction could not be established.'} }
+    $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory ($Phase+'-application-diagnostics.json'))
 }
 function ConvertFrom-EdgeDriverVersion([string]$Output,[int]$ExitCode) {
     # Public --version format verified against Microsoft's distributed driver.
@@ -251,7 +267,6 @@ try {
     $os=Get-CimInstance Win32_OperatingSystem
     @{os=$os.Caption;build=$os.BuildNumber;session=[Diagnostics.Process]::GetCurrentProcess().SessionId;runtime=$matching.runtime;driver_version=$matching.version;driver_source=$matching.source;driver_sha256=$matching.sha256;msi_sha256=$verified.sha256;product_code=$productCode;upgrade_code=$properties.UpgradeCode;known_folders=$knownRoots;windows_10_11_qualified=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory 'environment.json')
     foreach ($root in $knownRoots) { New-PrivateGuiRoot $root $token;$ownedRoots.Add($root) }
-    Test-InstalledGuiStartup
     $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
     $config=Join-Path $privateRoot 'driver-config.json'
     @{private_root=$privateRoot;evidence_root=$LogDirectory;port=$port;driver=$driverPath;application=$application;runtime_version=$matching.runtime} | ConvertTo-Json | Set-Content -LiteralPath $config
@@ -260,9 +275,17 @@ try {
         $process=Start-Process -FilePath $python -ArgumentList ('"'+(Join-Path $PSScriptRoot '..\tests\windows_standalone_gui.py')+'" --config "'+$config+'" --phase '+$phase) -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $privateRoot "$phase.out") -RedirectStandardError (Join-Path $privateRoot "$phase.err")
         try {
             $deadline=[DateTime]::UtcNow.AddMinutes(8)
-            while (-not $process.WaitForExit(1000)) { Remember-GuiProcesses;if ([DateTime]::UtcNow -gt $deadline) { $process.Kill();throw "GUI $phase exceeded eight minutes." } }
-            if ($process.ExitCode -ne 0) { throw "GUI $phase failed; inspect sanitized phase evidence." }
-        } finally { $process.Dispose();Stop-GuiProcesses }
+            while (-not $process.WaitForExit(1000)) { Remember-GuiProcesses;Confirm-GuiDebugListener $phase;if ([DateTime]::UtcNow -gt $deadline) { $process.Kill();throw "GUI $phase exceeded eight minutes." } }
+            if ($process.ExitCode -ne 0) { Save-GuiStartupEvidence $phase;throw "GUI $phase failed; inspect sanitized phase evidence." }
+        } finally {
+            try {
+                # A supervisor rejection can interrupt Python while it waits for
+                # the handshake. Stop this exact child before deleting evidence
+                # or profiles; do not kill its app/PostgreSQL descendants here.
+                if (-not $process.HasExited) { $process.Kill() }
+                if (-not $process.WaitForExit(10000)) { $timedOut=$true;throw 'GUI harness did not stop; fixture data retained.' }
+            } finally { $process.Dispose();Stop-GuiProcesses }
+        }
     }
     Invoke-Msi '/x' $productCode 'gui-uninstall'
     if ($installer.ProductState($productCode) -ne -1) { throw 'GUI fixture product remains installed.' }

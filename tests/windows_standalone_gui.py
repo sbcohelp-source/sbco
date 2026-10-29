@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import socket
 import subprocess
 import sys
 import time
@@ -43,6 +44,8 @@ def run(config, phase):
     driver = subprocess.Popen([config["driver"], "--port=" + str(config["port"]), "--allowed-ips=127.0.0.1"],
                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     session = None
+    application = None
+    application_streams = []
     stage = "driver startup"
 
     def call(path, data=None, method=None):
@@ -69,6 +72,8 @@ def run(config, phase):
     def wait(condition, description, timeout=90):
         until = time.monotonic() + timeout
         while time.monotonic() < until:
+            if application is not None and application.poll() is not None:
+                raise GuiFailure("Installed application exited with code " + str(application.returncode))
             if condition():
                 return
             time.sleep(.2)
@@ -108,11 +113,50 @@ def run(config, phase):
             if time.monotonic() >= until:
                 raise GuiFailure("Edge driver did not become ready")
             time.sleep(.2)
-        stage = "installed application launch"
+        stage = "supervised installed application startup"
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            debug_port = listener.getsockname()[1]
+        # Microsoft's documented attach flow: debugging is enabled for this
+        # fixture child only, bound to loopback; no application/security changes.
+        application_env = os.environ.copy()
+        application_env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (
+            "--remote-debugging-address=127.0.0.1 --remote-debugging-port=" + str(debug_port))
+        application_env["WEBVIEW2_USER_DATA_FOLDER"] = str(private / "webview")
+        application_streams = [open(private / (phase + "-application." + stream), "wb")
+                               for stream in ("stdout", "stderr")]
+        application = subprocess.Popen([config["application"]], env=application_env,
+                                       stdin=subprocess.DEVNULL, stdout=application_streams[0],
+                                       stderr=application_streams[1])
+        launched_at = time.monotonic()
+
+        def debugger_ready():
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:" + str(debug_port) + "/json/version", timeout=2) as response:
+                    version = json.load(response)
+                return bool(version.get("webSocketDebuggerUrl")) and application.poll() is None
+            except (OSError, ValueError):
+                return False
+
+        wait(debugger_ready, "installed WebView2 debugging endpoint", timeout=120)
+        (evidence / (phase + "-startup.json")).write_text(json.dumps({
+            "debug_endpoint_ready": True, "application_alive": application.poll() is None,
+            "elapsed_seconds": round(time.monotonic() - launched_at, 2),
+            "credentials_entered": False, "debug_bind": "127.0.0.1",
+        }, indent=2), encoding="utf-8")
+        # The supervisor verifies the actual listener PID/creation/path belongs
+        # to our recorded child tree and that every listener is loopback-only.
+        request_file = private / (phase + "-debug-request.json")
+        request_temp = request_file.with_suffix(".tmp")
+        request_temp.write_text(json.dumps({"application_pid": application.pid, "port": debug_port}), encoding="utf-8")
+        request_temp.replace(request_file)
+        wait(lambda: (private / (phase + "-debug-verified")).read_text(encoding="utf-8") == "verified"
+             if (private / (phase + "-debug-verified")).exists() else False,
+             "supervisor debugging listener ownership verification", timeout=30)
+        stage = "attach to installed WebView2"
         result = call("/session", {"capabilities": {"alwaysMatch": {
             "browserName": "webview2", "ms:edgeChromium": True,
-            "ms:edgeOptions": {"binary": config["application"], "args": [],
-                               "webviewOptions": {"userDataFolder": str(private / "webview"), "releaseChannelPreference": "stable"}},
+            "ms:edgeOptions": {"debuggerAddress": "127.0.0.1:" + str(debug_port)},
         }}})
         session = result["sessionId"]
         observed_version = result["capabilities"].get("browserVersion", "")
@@ -176,10 +220,15 @@ def run(config, phase):
     except Exception as error:
         (evidence / (phase + "-failure.json")).write_text(json.dumps({
             "stage": stage, "type": type(error).__name__, "message": redact(str(error), sensitive),
+            "application_exit_code": None if application is None else application.poll(),
         }, indent=2), encoding="utf-8")
         # No failure screenshot or page source on account/setup/sign-in screens.
         raise GuiFailure("Installed GUI failed at " + stage + "; inspect sanitized failure evidence") from None
     finally:
+        # The PowerShell supervisor closes the exact owned application/PG tree;
+        # do not kill a healthy database process from this UI harness.
+        for stream in application_streams:
+            stream.close()
         if session:
             try:
                 call("/session/" + session, method="DELETE")

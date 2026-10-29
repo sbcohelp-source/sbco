@@ -8,7 +8,7 @@ $source=Join-Path $PSScriptRoot 'test-windows-standalone-gui.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw ($errors|Out-String) }
-foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity','ConvertFrom-EdgeDriverVersion','Protect-GuiStartupText')) {
+foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity','ConvertFrom-EdgeDriverVersion','Protect-GuiStartupText','Test-GuiDescendantIdentity')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     Assert ($null -ne $definition) "Missing helper $name"
     Invoke-Expression $definition.Extent.Text
@@ -36,6 +36,13 @@ $child.ParentProcessId=999
 Assert (-not (Test-GuiChildIdentity $child $parent)) 'Unrelated process was claimed.'
 $child.ParentProcessId=100;$child.CreationDate=$null
 Assert (-not (Test-GuiChildIdentity $child $parent)) 'Process without creation identity was claimed.'
+$child.CreationDate=[DateTime]'2026-10-29T10:00:11Z'
+Assert (Test-GuiDescendantIdentity $child $parent @($parent,$child)) 'Actual app descendant rejected.'
+$foreign=[pscustomobject]@{ProcessId=300;ParentProcessId=0;CreationDate=[DateTime]'2026-10-29T10:00:01Z';ExecutablePath='driver.exe'}
+$child.ParentProcessId=300
+Assert (-not (Test-GuiDescendantIdentity $child $parent @($parent,$child,$foreign))) 'Driver-root child accepted as application listener.'
+$child.ParentProcessId=100;$child.CreationDate=[DateTime]'2026-10-29T10:00:05Z'
+Assert (-not (Test-GuiDescendantIdentity $child $parent @($parent,$child))) 'Reused application PID accepted as listener ancestor.'
 Write-Host 'PASS exact parent-instance ancestry, including stale PID reuse and unknown creation time refusal.'
 $fixture=Join-Path ([IO.Path]::GetTempPath()) ('sbco-gui-guards-'+[guid]::NewGuid().ToString('N'))
 try {
