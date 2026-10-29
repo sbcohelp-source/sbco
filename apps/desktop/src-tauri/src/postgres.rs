@@ -352,7 +352,11 @@ impl LocalPostgres {
             let _ = std::fs::remove_file(&temporary);
             return Err(error);
         }
-        File::open(&temporary)
+        // Windows FlushFileBuffers requires a handle opened with write access.
+        File::options()
+            .read(true)
+            .write(true)
+            .open(&temporary)
             .and_then(|file| file.sync_all())
             .map_err(|e| e.to_string())?;
         std::fs::rename(temporary, path).map_err(|e| e.to_string())
@@ -511,6 +515,24 @@ mod tests {
     use super::*;
     use sbco_application::Backend;
 
+    // Stop this exact test cluster even if an assertion panics. Otherwise its
+    // inherited Windows handles can keep the diagnostic runner alive.
+    struct TestPostgres(LocalPostgres);
+
+    impl std::ops::Deref for TestPostgres {
+        type Target = LocalPostgres;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl Drop for TestPostgres {
+        fn drop(&mut self) {
+            self.0.stop();
+        }
+    }
+
     #[test]
     fn windows_initialization_uses_postgresql_builtin_unicode_locale() {
         assert_eq!(
@@ -603,7 +625,9 @@ mod tests {
         let resources =
             PathBuf::from(std::env::var("SBCO_TEST_RESOURCES").expect("resource directory"));
         eprintln!("lifecycle stage: initialize PostgreSQL");
-        let pg = LocalPostgres::start(&root, &resources).expect("initialize local PostgreSQL");
+        let pg = TestPostgres(
+            LocalPostgres::start(&root, &resources).expect("initialize local PostgreSQL"),
+        );
         eprintln!("lifecycle stage: reject second instance");
         assert!(
             LocalPostgres::start(&root, &resources).is_err(),
@@ -705,10 +729,9 @@ mod tests {
         pg.restore(backup).await.unwrap();
         db.pool.close().await;
         eprintln!("lifecycle stage: stop PostgreSQL");
-        pg.stop();
         drop(pg);
         eprintln!("lifecycle stage: restart restored database");
-        let pg = LocalPostgres::start(&root, &resources).unwrap();
+        let pg = TestPostgres(LocalPostgres::start(&root, &resources).unwrap());
         eprintln!("lifecycle stage: connect and migrate");
         let db = sbco_infrastructure::Database::connect(&pg.url)
             .await
@@ -732,7 +755,6 @@ mod tests {
         assert!(original_exists);
         db.pool.close().await;
         eprintln!("lifecycle stage: stop PostgreSQL");
-        pg.stop();
         drop(pg);
         std::fs::remove_dir_all(root).unwrap();
         eprintln!("lifecycle stage: complete");
