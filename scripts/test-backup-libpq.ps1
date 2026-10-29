@@ -27,8 +27,12 @@ try{
     $ErrorActionPreference='Stop'
     if($code -eq 0){throw 'Expected closed-port connection failure.'}
     if($output -notmatch '127\.0\.0\.1' -or $output -notmatch 'port 1\b' -or $output -match '5432|192\.0\.2\.1|must-not-be-used'){
-        throw 'Native pg_dump did not use the intended isolated endpoint.'
+        $safeOutput=$output.Replace($env:PGPASSWORD,'[REDACTED]')
+        $safeOutput=[regex]::Replace($safeOutput,'postgresql://[^@\s]+@','postgresql://[REDACTED]@')
+        throw ('Native pg_dump did not use the intended isolated endpoint. Exit '+$code+': '+$safeOutput.Substring(0,[Math]::Min(4000,$safeOutput.Length)))
     }
+    # GitHub's pwsh wrapper exits with LASTEXITCODE; this native refusal is expected.
+    $global:LASTEXITCODE=0
     Write-Host 'PASS real pg_dump uses URI-derived loopback port1, decoded environment credentials, and ignores poisoned ambient hostaddr/service without credentials in argv.'
 }finally{
     Set-BackupProcessEnvironment $previous

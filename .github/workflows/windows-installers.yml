@@ -60,6 +60,7 @@ jobs:
           $inputs = Get-Content (Join-Path $env:RUNNER_TEMP 'sbco-verified-inputs/inputs.json') -Raw | ConvertFrom-Json
           ./scripts/test-backup-libpq.ps1 -PgDumpPath (Join-Path $inputs.postgres_root 'bin/pg_dump.exe')
       - name: Build SBCO Server MSI
+        id: server-build
         run: |
           $inputs = Get-Content (Join-Path $env:RUNNER_TEMP 'sbco-verified-inputs/inputs.json') -Raw | ConvertFrom-Json
           ./scripts/build-windows-server-msi.ps1 -PostgresRoot $inputs.postgres_root -PostgresLicenseDirectory $inputs.postgres_licenses -NodeRoot $inputs.node_root -WinSwPath $inputs.winsw -CaddyPath $inputs.caddy -ThirdPartyLicenseDirectory $inputs.third_party_licenses -WixRoot $inputs.wix_root -SkipDependencyInstall
@@ -98,7 +99,7 @@ jobs:
           cargo test --release --target x86_64-pc-windows-msvc --manifest-path apps/desktop/src-tauri/Cargo.toml --features connected-client --locked transport::tests
           if ($LASTEXITCODE -ne 0) { throw 'Windows connected-client transport tests failed.' }
       - name: Save Windows compilation cache
-        if: ${{ !cancelled() && steps.rust-cache.outputs.cache-hit != 'true' && steps.rust-cache.outputs.cache-primary-key != '' }}
+        if: ${{ !cancelled() && steps.server-build.outcome != 'skipped' && steps.rust-cache.outputs.cache-hit != 'true' && steps.rust-cache.outputs.cache-primary-key != '' }}
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
