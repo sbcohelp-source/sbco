@@ -127,6 +127,48 @@ function Stop-GuiProcesses {
     }
     if ($application -and (Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $application })) { throw 'Fixture application remains running.' }
 }
+function Protect-GuiStartupText([string]$Text,[string[]]$Secrets) {
+    foreach ($secret in $Secrets) { if ($secret) { $Text=$Text.Replace($secret,'[REDACTED]') } }
+    $Text=[regex]::Replace($Text,'postgres(?:ql)?://[^\s"<>]+','[REDACTED_DATABASE_URI]')
+    return $Text.Substring(0,[Math]::Min(3000,$Text.Length))
+}
+function Test-InstalledGuiStartup {
+    # A separate first start distinguishes application failure from the driver's
+    # launch deadline. No administrator credentials exist during this preflight.
+    $stdout=Join-Path $privateRoot 'startup.out';$stderr=Join-Path $privateRoot 'startup.err'
+    $process=Start-Process -FilePath $application -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    $watch=[Diagnostics.Stopwatch]::StartNew();$windowSeen=$false;$exitCode=$null
+    try {
+        while ($watch.Elapsed.TotalSeconds -lt 120) {
+            Remember-GuiProcesses
+            $process.Refresh()
+            if ($process.HasExited) { $exitCode=$process.ExitCode;break }
+            if ($process.MainWindowHandle -ne [IntPtr]::Zero -and $process.MainWindowTitle -ceq 'SBCO Voucher Verification') { $windowSeen=$true;break }
+            Start-Sleep -Milliseconds 250
+        }
+    } finally {
+        $watch.Stop()
+        # Close only this fixture's exact recorded app and PostgreSQL processes.
+        Stop-GuiProcesses
+        $process.Dispose()
+    }
+    $result=@{native_window_seen=$windowSeen;elapsed_seconds=[Math]::Round($watch.Elapsed.TotalSeconds,2);exit_code=$exitCode;credentials_entered=$false}
+    if (-not $windowSeen) {
+        # Read generated database secrets only to remove them, never export the
+        # config itself. If secret discovery fails, omit text rather than guess.
+        try {
+            $secrets=@(foreach ($root in $knownRoots) {
+                Assert-OwnedGuiRoot $root $token $allowedRoots
+                $databaseConfig=Join-Path $root 'database.json'
+                if (Test-Path -LiteralPath $databaseConfig) { (Get-Content -LiteralPath $databaseConfig -Raw | ConvertFrom-Json).password }
+            })
+            $result.stdout=Protect-GuiStartupText ([IO.File]::ReadAllText($stdout)) $secrets
+            $result.stderr=Protect-GuiStartupText ([IO.File]::ReadAllText($stderr)) $secrets
+        } catch { $result.diagnostics='Startup text omitted because safe redaction could not be established.' }
+    }
+    $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory 'startup-preflight.json')
+    if (-not $windowSeen) { throw 'Installed application did not create a native window during direct startup; inspect sanitized preflight evidence.' }
+}
 function ConvertFrom-EdgeDriverVersion([string]$Output,[int]$ExitCode) {
     # Public --version format verified against Microsoft's distributed driver.
     if ($ExitCode -ne 0 -or $Output.Trim() -notmatch '^Microsoft Edge WebDriver (\d+\.\d+\.\d+\.\d+)(?: \([a-f0-9]+\))?$') { throw 'Edge driver version could not be verified.' }
@@ -209,6 +251,7 @@ try {
     $os=Get-CimInstance Win32_OperatingSystem
     @{os=$os.Caption;build=$os.BuildNumber;session=[Diagnostics.Process]::GetCurrentProcess().SessionId;runtime=$matching.runtime;driver_version=$matching.version;driver_source=$matching.source;driver_sha256=$matching.sha256;msi_sha256=$verified.sha256;product_code=$productCode;upgrade_code=$properties.UpgradeCode;known_folders=$knownRoots;windows_10_11_qualified=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory 'environment.json')
     foreach ($root in $knownRoots) { New-PrivateGuiRoot $root $token;$ownedRoots.Add($root) }
+    Test-InstalledGuiStartup
     $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
     $config=Join-Path $privateRoot 'driver-config.json'
     @{private_root=$privateRoot;evidence_root=$LogDirectory;port=$port;driver=$driverPath;application=$application;runtime_version=$matching.runtime} | ConvertTo-Json | Set-Content -LiteralPath $config

@@ -8,11 +8,15 @@ $source=Join-Path $PSScriptRoot 'test-windows-standalone-gui.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw ($errors|Out-String) }
-foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity','ConvertFrom-EdgeDriverVersion')) {
+foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity','ConvertFrom-EdgeDriverVersion','Protect-GuiStartupText')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     Assert ($null -ne $definition) "Missing helper $name"
     Invoke-Expression $definition.Extent.Text
 }
+$safe=Protect-GuiStartupText 'generated-password postgresql://u:other@localhost/db tail' @('generated-password')
+Assert ($safe -ceq '[REDACTED] [REDACTED_DATABASE_URI] tail') 'Startup evidence exposed generated password or database URI.'
+Assert ((Protect-GuiStartupText ('x'*4000) @()).Length -eq 3000) 'Startup evidence was not bounded.'
+Write-Host 'PASS pre-credential startup diagnostics secret/URI redaction and output bound.'
 # Captured from the official 155.0.4283.62 Linux driver --version (no browser launch).
 $publicVersion='Microsoft Edge WebDriver 155.0.4283.62 (aa3a7406ba8c53a83536df539f07124d73c899bd)'
 Assert ((ConvertFrom-EdgeDriverVersion ($publicVersion+"`r`n") 0) -ceq '155.0.4283.62') 'Official Edge driver branding/version was rejected.'
