@@ -94,8 +94,13 @@ function Remove-ServerServices {
     Set-OwnedFirewall $false
     Write-Host "Services removed. All database, settings, certificates and backup files remain in $DataRoot."
 }
-function Resume-ServerServices {
+function Resume-ServerServices([switch]$Rollback) {
     if (-not (Read-OwnedInstallation)) { return }
+    . (Join-Path $PSScriptRoot 'Backup-Common.ps1')
+    # Only MSI rollback restores removed task state. Ordinary reinstall clears the
+    # previous transaction's journal before anything can fail, without enabling it.
+    if ($Rollback) { Restore-OwnedBackupScheduleAfterRollback }
+    else { Clear-BackupScheduleRemovalJournal }
     $readyPath = Join-Path $DataRoot 'configured.json'
     if (-not (Test-Path -LiteralPath $readyPath)) { throw 'Setup is incomplete. No existing database or configuration was overwritten.' }
     $ready = Get-Content -LiteralPath $readyPath -Raw | ConvertFrom-Json
@@ -121,5 +126,9 @@ function Resume-ServerServices {
     if ($ready.firewall) { Set-OwnedFirewall $true }
     $ready | Add-Member -NotePropertyName ready -NotePropertyValue $true -Force
     Write-Utf8 $readyPath ($ready | ConvertTo-Json)
+    $backupSettings = Read-BackupSchedule
+    if ($backupSettings -and $backupSettings.enabled -and -not (Get-OwnedBackupTask)) {
+        Write-Warning 'Daily backups are not scheduled. Run server\Set-BackupSchedule.ps1 -Action Enable with your preferred time and retention to enable them again.'
+    }
     Write-Host "Server ready at https://$($ready.hostname). Existing data and configuration were preserved."
 }

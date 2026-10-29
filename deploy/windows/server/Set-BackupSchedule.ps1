@@ -16,6 +16,7 @@ try {
     $null = Assert-BackupInstallation
     $task = Get-OwnedBackupTask
     $settings = Read-BackupSchedule
+    if ($Action -ne 'Status') { Clear-BackupScheduleRemovalJournal }
     if ($Action -eq 'Enable') {
         $trigger = New-ScheduledTaskTrigger -Daily -At ([DateTime]::Today.Add([TimeSpan]::ParseExact($Time, 'hh\:mm', [Globalization.CultureInfo]::InvariantCulture)))
         $taskAction = New-ScheduledTaskAction -Execute (Get-BackupTaskExecutable) -Argument (Get-BackupTaskArguments) -WorkingDirectory $InstallRoot

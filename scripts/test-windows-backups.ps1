@@ -101,9 +101,31 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     function New-ScheduledTaskPrincipal { param($UserId,$LogonType,$RunLevel); [pscustomobject]@{UserId=$UserId;LogonType=$LogonType;RunLevel=$RunLevel} }
     function New-ScheduledTaskSettingsSet { param([switch]$StartWhenAvailable,$MultipleInstances,$RestartCount,$RestartInterval,$ExecutionTimeLimit,[switch]$AllowStartIfOnBatteries,[switch]$DontStopIfGoingOnBatteries); [pscustomobject]@{Enabled=$true;MultipleInstances=$MultipleInstances;RestartCount=$RestartCount;StartWhenAvailable=[bool]$StartWhenAvailable} }
     function New-ScheduledTask { param($Action,$Trigger,$Principal,$Settings,$Description); [pscustomobject]@{Actions=@($Action);Triggers=@($Trigger);Principal=$Principal;Settings=$Settings;Description=$Description;State='Disabled'} }
-    function Register-ScheduledTask { param($TaskName,$TaskPath,$InputObject,[switch]$Force); $global:sbcoTestTask=$InputObject }
-    function Enable-ScheduledTask { param($TaskName,$TaskPath); $global:sbcoTestTask.State='Ready' }
-    function Disable-ScheduledTask { param($TaskName,$TaskPath); $global:sbcoTestTask.State='Disabled' }
+    function Register-ScheduledTask {
+        param($TaskName,$TaskPath,$InputObject,$Xml,[switch]$Force)
+        if($Xml) {
+            [xml]$definition=$Xml; $task=$definition.Task
+            $global:sbcoTestTask=[pscustomobject]@{
+                Description=[string]$task.RegistrationInfo.Description
+                Actions=@([pscustomobject]@{Execute=[string]$task.Actions.Exec.Command;Arguments=[string]$task.Actions.Exec.Arguments;WorkingDirectory=[string]$task.Actions.Exec.WorkingDirectory})
+                Principal=[pscustomobject]@{UserId=[string]$task.Principals.Principal.UserId;LogonType=[string]$task.Principals.Principal.LogonType}
+                Settings=[pscustomobject]@{Enabled=([string]$task.Settings.Enabled -eq 'true')}
+                State=$(if([string]$task.Settings.Enabled -eq 'true'){'Ready'}else{'Disabled'})
+            }
+        } else { $global:sbcoTestTask=$InputObject }
+    }
+    function Export-ScheduledTask {
+        param($TaskName,$TaskPath)
+        $task=$global:sbcoTestTask
+        $description=[Security.SecurityElement]::Escape($task.Description)
+        $executable=[Security.SecurityElement]::Escape($task.Actions[0].Execute)
+        $arguments=[Security.SecurityElement]::Escape($task.Actions[0].Arguments)
+        $directory=[Security.SecurityElement]::Escape($task.Actions[0].WorkingDirectory)
+        $enabled=$task.Settings.Enabled.ToString().ToLowerInvariant()
+        "<Task><RegistrationInfo><Description>$description</Description></RegistrationInfo><Principals><Principal><UserId>S-1-5-18</UserId><LogonType>ServiceAccount</LogonType></Principal></Principals><Settings><Enabled>$enabled</Enabled></Settings><Actions><Exec><Command>$executable</Command><Arguments>$arguments</Arguments><WorkingDirectory>$directory</WorkingDirectory></Exec></Actions></Task>"
+    }
+    function Enable-ScheduledTask { param($TaskName,$TaskPath); $global:sbcoTestTask.State='Ready'; $global:sbcoTestTask.Settings.Enabled=$true }
+    function Disable-ScheduledTask { param($TaskName,$TaskPath); $global:sbcoTestTask.State='Disabled'; $global:sbcoTestTask.Settings.Enabled=$false }
     function Unregister-ScheduledTask { param($TaskName,$TaskPath,$Confirm); $global:sbcoTestTask=$null }
     function Get-ScheduledTaskInfo { param($TaskName,$TaskPath); [pscustomobject]@{NextRunTime=[datetime]::Today.AddDays(1);LastTaskResult=0} }
     $control=Join-Path $server 'Set-BackupSchedule.ps1'
@@ -127,6 +149,41 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     Assert ($global:sbcoTestTask.State -eq 'Disabled' -and -not (Read-BackupSchedule).enabled) 'Disable state not saved'
     Remove-OwnedBackupSchedule
     Assert ($null -eq $global:sbcoTestTask) 'Owned task remained after removal'
+    $journalPath=Join-Path $DataRoot 'backup-removal.json'
+    Assert (Test-Path -LiteralPath $journalPath) 'Removal journal missing'
+    Restore-OwnedBackupScheduleAfterRollback
+    Assert ($global:sbcoTestTask.State -eq 'Disabled' -and -not (Read-BackupSchedule).enabled) 'Rollback enabled a disabled schedule'
+    Assert (-not (Test-Path -LiteralPath $journalPath)) 'Successful rollback left journal'
+    & $control -Action Enable -Time '04:30' -Retention 3 | Out-Null
+    $ownedTask=$global:sbcoTestTask
+    Remove-OwnedBackupSchedule
+    $global:sbcoTestTask=$ownedTask; $global:sbcoTestTask.Description='Foreign replacement'
+    Refuses {Restore-OwnedBackupScheduleAfterRollback} 'Rollback replaced foreign task'
+    Assert (Test-Path -LiteralPath $journalPath) 'Refused rollback discarded recovery journal'
+    $global:sbcoTestTask=$null
+    Restore-OwnedBackupScheduleAfterRollback
+    $restoredSettings=Read-BackupSchedule
+    Assert ($global:sbcoTestTask.State -eq 'Ready' -and $restoredSettings.enabled -and $restoredSettings.time -eq '04:30' -and $restoredSettings.retention -eq 3) 'Enabled rollback lost state/preferences'
+    # Actual task disabled outside the operator script, preference still enabled.
+    Disable-ScheduledTask
+    Remove-OwnedBackupSchedule
+    Restore-OwnedBackupScheduleAfterRollback
+    Assert ($global:sbcoTestTask.State -eq 'Disabled' -and (Read-BackupSchedule).enabled) 'Rollback failed to preserve actual disabled task state'
+    Remove-OwnedBackupSchedule
+    function Assert-OwnedService([string]$Name) { throw 'Simulated fallible service resume' }
+    Refuses {Resume-ServerServices} 'Expected simulated service failure'
+    Assert (-not (Test-Path -LiteralPath $journalPath)) 'Ordinary resume did not invalidate stale journal before service failure'
+    Restore-OwnedBackupScheduleAfterRollback
+    Assert ($null -eq $global:sbcoTestTask) 'Stale uninstall journal restored task after ordinary resume'
+    & $control -Action Enable -Time '04:30' -Retention 3 | Out-Null
+    Remove-OwnedBackupSchedule
+    & $control -Action Disable | Out-Null
+    Assert (-not (Test-Path -LiteralPath $journalPath)) 'Explicit Disable left stale journal'
+    & $control -Action Enable -Time '04:30' -Retention 3 | Out-Null
+    Remove-OwnedBackupSchedule
+    & $control -Action Enable -Time '04:30' -Retention 3 | Out-Null
+    Assert (-not (Test-Path -LiteralPath $journalPath)) 'Explicit Enable left stale journal'
+    Write-Host 'PASS enabled/disabled rollback, actual-state preservation, foreign-task refusal, ordinary resume and operator stale-journal invalidation.'
     Assert (@(Get-ChildItem -LiteralPath $folder).Count -eq $before) 'Schedule operation modified backups'
     Write-Host 'PASS schedule time/retention, SYSTEM action without secrets, retry/catch-up, foreign-task refusal, disable and uninstall preserve archives.'
 } finally {

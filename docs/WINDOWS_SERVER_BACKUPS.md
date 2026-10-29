@@ -37,6 +37,8 @@ To make an additional manual backup:
 & "$serverScripts\Backup-Server.ps1"
 ```
 
+A failed MSI uninstall has a separate rollback path: before removing the owned task, the installer records its task definition, schedule preferences and actual enabled/disabled state in protected `backup-removal.json`. Only rollback restores that record, and it refuses an unrelated replacement task. A successful uninstall can leave this recovery journal with the preserved data; ordinary resume clears it before starting services, and explicit Enable/Disable clears it after ownership checks. It does not automatically enable backups after a normal reinstall.
+
 Manual backups use `sbco-` names and are never removed by scheduled retention. No scheduled task is created merely by invoking the manual command. Re-enable explicitly after an uninstall/reinstall; repair at the same location preserves the existing task. Never rename or repurpose the reserved task. An unexpected owner, command, account or installation path causes refusal instead of takeover.
 
 ## Files, verification and retention
@@ -74,6 +76,6 @@ Perform a rehearsal on a disposable machine or isolated PostgreSQL cluster. Neve
 
 ## Evidence and qualification boundary
 
-`scripts/test-windows-backups.ps1` executes portable tests using real temporary files and simulated Windows scheduler/ACL/PostgreSQL adapters. It verifies failure without retention, partial cleanup, durable status without secret details, checksum/provenance selection, retention bounds, preservation of manual/foreign/corrupt files, queued-disable behavior, environment restoration, schedule changes and refusal to replace or remove foreign tasks. On Linux it additionally checks symlink ancestors. These tests passed locally on 29 October 2026.
+`scripts/test-windows-backups.ps1` executes portable tests using real temporary files and simulated Windows scheduler/ACL/PostgreSQL adapters. It verifies failure without retention, partial cleanup, durable status without secret details, checksum/provenance selection, retention bounds, preservation of manual/foreign/corrupt files, queued-disable behavior, environment restoration, schedule changes, refusal to replace or remove foreign tasks, enabled/disabled rollback restoration and stale-journal invalidation before ordinary service recovery. On Linux it additionally checks symlink ancestors. These tests passed locally on 29 October 2026.
 
 The separate hosted Windows runtime rehearsal is intended to execute the real SYSTEM task, PostgreSQL dump and isolated restore. Its successful run must be recorded before claiming those Windows operations are verified. A Windows CI runner still does not qualify office Windows 10/11 builds, machine power policies, storage failure recovery, operator access or a production office restore. No live office database is changed by the portable test.

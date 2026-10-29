@@ -32,10 +32,62 @@ function Get-OwnedBackupTask {
     }
     return $task
 }
+function Read-BackupScheduleRemovalJournal {
+    $path = Join-Path $DataRoot 'backup-removal.json'
+    Assert-BackupPath $path
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    $owned = Read-OwnedInstallation
+    $journal = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    if (-not $owned -or $journal.format -ne 1 -or $journal.install_root -ine $InstallRoot -or
+        $journal.install_created_at -cne $owned.created_at -or $journal.enabled -isnot [bool]) {
+        throw 'Backup removal journal belongs to another installation or is invalid; it was preserved.'
+    }
+    return $journal
+}
+function Clear-BackupScheduleRemovalJournal {
+    if (Read-BackupScheduleRemovalJournal) { Remove-Item -LiteralPath (Join-Path $DataRoot 'backup-removal.json') -Force }
+}
 function Remove-OwnedBackupSchedule {
-    if (-not (Read-OwnedInstallation)) { return }
+    $owned = Read-OwnedInstallation
+    if (-not $owned) { return }
     $task = Get-OwnedBackupTask
-    if ($task) { Unregister-ScheduledTask -TaskName $BackupTaskName -TaskPath '\' -Confirm:$false }
+    if ($task) {
+        $settings = Read-BackupSchedule
+        if (-not $settings) { throw 'The backup task has no owned schedule settings; removal was refused.' }
+        # Journal before unregister so MSI rollback can restore the actual task state.
+        # It is never consumed by ordinary reinstall/resume or by operator controls.
+        $null = Read-BackupScheduleRemovalJournal
+        Write-BackupJson (Join-Path $DataRoot 'backup-removal.json') @{
+            format=1; install_root=$InstallRoot; install_created_at=$owned.created_at
+            enabled=[bool]$task.Settings.Enabled; settings=$settings
+            task_xml=[string](Export-ScheduledTask -TaskName $BackupTaskName -TaskPath '\')
+        }
+        Unregister-ScheduledTask -TaskName $BackupTaskName -TaskPath '\' -Confirm:$false
+    }
+}
+function Restore-OwnedBackupScheduleAfterRollback {
+    $journal = Read-BackupScheduleRemovalJournal
+    if (-not $journal) { return }
+    $null = Get-OwnedBackupTask # Refuse an unrelated replacement even if the journal is valid.
+    $settings = $journal.settings
+    Assert-BackupScheduleSettings $settings
+    [xml]$definition = $journal.task_xml
+    $task = $definition.Task
+    $actions = @($task.Actions.Exec); $principals = @($task.Principals.Principal)
+    if ($task.RegistrationInfo.Description -cne "Managed by SBCO Server backup format 1 at $InstallRoot" -or
+        $task.Actions.ChildNodes.Count -ne 1 -or $actions.Count -ne 1 -or $principals.Count -ne 1 -or
+        $actions[0].Command -ine (Get-BackupTaskExecutable) -or $actions[0].Arguments -cne (Get-BackupTaskArguments) -or
+        $actions[0].WorkingDirectory -ine $InstallRoot -or $principals[0].UserId -notin @('SYSTEM','NT AUTHORITY\SYSTEM','S-1-5-18') -or
+        $principals[0].LogonType -ne 'ServiceAccount') {
+        throw 'Backup rollback task does not match this installation; no task was registered.'
+    }
+    $task.Settings.Enabled = $journal.enabled.ToString().ToLowerInvariant()
+    # Preserve the recorded preference AND actual task Enabled state, even if an operator
+    # disabled the task directly in Task Scheduler before uninstall began.
+    Write-BackupJson (Join-Path $DataRoot 'backup-schedule.json') $settings
+    Register-ScheduledTask -TaskName $BackupTaskName -TaskPath '\' -Xml $definition.OuterXml -Force | Out-Null
+    $null = Get-OwnedBackupTask
+    Clear-BackupScheduleRemovalJournal
 }
 function Write-BackupJson([string]$Path, $Value) {
     Assert-BackupPath $Path
@@ -51,10 +103,13 @@ function Read-BackupSchedule {
     Assert-BackupPath $path
     if (-not (Test-Path -LiteralPath $path)) { return $null }
     $settings = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-    if ($settings.format -ne 1 -or $settings.install_root -ine $InstallRoot -or
-        $settings.time -notmatch '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$' -or $settings.retention -lt 1 -or $settings.retention -gt 365 -or
-        $settings.enabled -isnot [bool]) { throw 'Backup schedule settings are invalid; no backup files were removed.' }
+    Assert-BackupScheduleSettings $settings
     return $settings
+}
+function Assert-BackupScheduleSettings($Settings) {
+    if ($Settings.format -ne 1 -or $Settings.install_root -ine $InstallRoot -or
+        $Settings.time -notmatch '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$' -or $Settings.retention -lt 1 -or $Settings.retention -gt 365 -or
+        $Settings.enabled -isnot [bool]) { throw 'Backup schedule settings are invalid; no backup files were removed.' }
 }
 function Remove-ExpiredScheduledBackups([string]$Folder, [int]$Retention, $Owned) {
     if ($Retention -lt 1 -or $Retention -gt 365) { throw 'Retention must be between 1 and 365 successful scheduled backups.' }

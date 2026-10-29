@@ -19,8 +19,8 @@ $oldPassword = $env:PGPASSWORD
 $installer = New-Object -ComObject WindowsInstaller.Installer
 function Read-MsiProperty($Database, [string]$Property) {
     $view = $Database.OpenView("SELECT ``Value`` FROM ``Property`` WHERE ``Property``='$Property'")
-    try { $view.Execute(); $record=$view.Fetch(); if ($null -eq $record) { throw "Missing MSI property $Property" }; try { return $record.StringData(1) } finally { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) | Out-Null } }
-    finally { $view.Close(); [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) | Out-Null }
+    try { $null = $view.Execute(); $record=$view.Fetch(); if ($null -eq $record) { throw "Missing MSI property $Property" }; try { return $record.StringData(1) } finally { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) | Out-Null } }
+    finally { $null = $view.Close(); [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) | Out-Null }
 }
 function Invoke-TestMsi([string]$Operation, [string]$Target, [string]$Label) {
     $log = Join-Path $LogDirectory "$Label.log"
@@ -41,7 +41,7 @@ try {
     if (Get-ScheduledTask -TaskName 'SBCO Server Daily Backup' -TaskPath '\' -ErrorAction SilentlyContinue) { throw 'Existing backup task refused.' }
     if (Get-NetTCPConnection -State Listen -LocalPort 55439 -ErrorAction SilentlyContinue) { throw 'Required isolated PostgreSQL port is occupied.' }
     foreach ($root in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall')) {
-        if (Test-Path $root) { foreach ($entry in Get-ChildItem $root) { if ((Get-ItemPropertyValue -LiteralPath $entry.PSPath -Name DisplayName -ErrorAction SilentlyContinue) -like 'SBCO*') { throw 'Existing SBCO product registration refused.' } } }
+        if (Test-Path $root) { foreach ($entry in Get-ChildItem $root) { if (($entry.GetValue('DisplayName', $null)) -like 'SBCO*') { throw 'Existing SBCO product registration refused.' } } }
     }
     $files = @(Get-ChildItem -LiteralPath $ArtifactDirectory -Filter '*.msi' -File)
     if ($files.Count -ne 1) { throw 'Exactly one server MSI is required.' }
@@ -103,6 +103,17 @@ try {
     if (-not $status.schedule.enabled -or $status.schedule.retention -ne 2) { throw 'Schedule registration did not persist.' }
     $task=Get-OwnedBackupTask
     if ($null -eq $task -or $task.State -eq 'Disabled') { throw 'Owned scheduled task was not enabled.' }
+    # Exercise the same journal helpers used by MSI uninstall rollback against the real scheduler.
+    foreach ($expectedEnabled in @($true, $false)) {
+        if (-not $expectedEnabled) { $null=& $schedule -Action Disable }
+        Remove-OwnedBackupSchedule
+        if ($null -ne (Get-OwnedBackupTask)) { throw 'Removal rehearsal retained the owned task.' }
+        Restore-OwnedBackupScheduleAfterRollback
+        $restoredTask=Get-OwnedBackupTask
+        $restoredStatus=& $schedule -Action Status
+        if ($null -eq $restoredTask -or ($restoredTask.State -ne 'Disabled') -ne $expectedEnabled -or $restoredStatus.schedule.enabled -ne $expectedEnabled -or $restoredStatus.schedule.retention -ne 2 -or $restoredStatus.schedule.time -cne '02:00') { throw 'Rollback did not restore task state and schedule preferences.' }
+    }
+    $null=& $schedule -Action Enable -Time '02:00' -Retention 2
     function Invoke-ScheduledBackup {
         $statusFile=Join-Path $DataRoot 'backup-status.json'
         $previousFile=if(Test-Path -LiteralPath $statusFile){(Get-Content -LiteralPath $statusFile -Raw | ConvertFrom-Json -AsHashtable)['file']}else{$null}
@@ -149,7 +160,7 @@ try {
     if (Get-ScheduledTask -TaskName $BackupTaskName -TaskPath '\' -ErrorAction SilentlyContinue) { throw 'Uninstall retained the backup task.' }
     if (Get-Service -Name 'SBCO*' -ErrorAction SilentlyContinue) { throw 'Uninstall retained a fixture service.' }
     if (-not (Test-Path -LiteralPath (Join-Path $pgData 'global\pg_control')) -or (Get-FileHash -LiteralPath $dump -Algorithm SHA256).Hash -ine $hash) { throw 'Uninstall removed or changed preserved backup/database data.' }
-    @{result='passed';scope='disposable Windows backup runtime rehearsal';source_msi_sha256=$expectedHash;scheduled_dump_sha256=$hash;restored_rows=2;unicode_numeric_account_binary_roundtrip=$true;scheduled_retention=2;manual_backup_preserved=$true;scheduler_removed=$true;database_preserved=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory 'backup-rehearsal.json')
+    @{result='passed';scope='disposable Windows backup runtime rehearsal';source_msi_sha256=$expectedHash;scheduled_dump_sha256=$hash;restored_rows=2;unicode_numeric_account_binary_roundtrip=$true;scheduled_retention=2;manual_backup_preserved=$true;scheduler_removed=$true;database_preserved=$true;enabled_and_disabled_schedule_rollback=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory 'backup-rehearsal.json')
 } catch {
     $failureMessage=$_.Exception.Message
     if ($password) { $failureMessage=$failureMessage.Replace($password,'[REDACTED]') }
