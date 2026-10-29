@@ -139,13 +139,25 @@ fn checked(output: std::io::Result<Output>, name: &str) -> Result<(), String> {
     }
 }
 fn run(bin: &Path, lib: &Path, name: &str, args: &[&str]) -> Result<(), String> {
-    checked(
-        Command::new(executable(bin, name))
-            .args(args)
-            .env("LD_LIBRARY_PATH", lib)
-            .output(),
-        name,
-    )
+    #[cfg(test)]
+    eprintln!(
+        "lifecycle tool begin: {name} {}",
+        if name == "pg_ctl" {
+            args.last().copied().unwrap_or("")
+        } else {
+            ""
+        }
+    );
+    let output = Command::new(executable(bin, name))
+        .args(args)
+        .env("LD_LIBRARY_PATH", lib)
+        .output();
+    #[cfg(test)]
+    eprintln!(
+        "lifecycle tool end: {name}, success={}",
+        output.as_ref().is_ok_and(|result| result.status.success())
+    );
+    checked(output, name)
 }
 fn private_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::write(path, bytes).map_err(|e| e.to_string())?;
@@ -583,16 +595,21 @@ mod tests {
         let root = std::env::temp_dir().join(format!("sbco-lifecycle-{}", Uuid::new_v4()));
         let resources =
             PathBuf::from(std::env::var("SBCO_TEST_RESOURCES").expect("resource directory"));
+        eprintln!("lifecycle stage: initialize PostgreSQL");
         let pg = LocalPostgres::start(&root, &resources).expect("initialize local PostgreSQL");
+        eprintln!("lifecycle stage: reject second instance");
         assert!(
             LocalPostgres::start(&root, &resources).is_err(),
             "second instance must be rejected"
         );
+        eprintln!("lifecycle stage: connect and migrate");
         let db = sbco_infrastructure::Database::connect(&pg.url)
             .await
             .unwrap();
         let empty_backup = root.join("empty.dump");
+        eprintln!("lifecycle stage: empty backup");
         pg.backup(&empty_backup).unwrap();
+        eprintln!("lifecycle stage: bootstrap and login");
         db.bootstrap(
             "Test Administrator",
             "local@example.test",
@@ -607,6 +624,7 @@ mod tests {
         .await
         .unwrap();
         let backup = root.join("test.dump");
+        eprintln!("lifecycle stage: manual and automatic backups");
         pg.backup(&backup).unwrap();
         pg.scheduled_backup_for_date("2026-10-28", "2026-10-28T01:00:00Z")
             .unwrap();
@@ -619,6 +637,7 @@ mod tests {
             pg.backup_status().unwrap().last_success.as_deref(),
             Some("2026-10-28T01:00:00Z")
         );
+        eprintln!("lifecycle stage: damaged backup rejection and repair");
         let original_config = std::fs::read(root.join("database.json")).unwrap();
         private_file(&automatic, b"damaged archive").unwrap();
         assert!(
@@ -652,6 +671,7 @@ mod tests {
         pg.scheduled_backup_for_date("2026-10-29", "2026-10-29T02:00:00Z")
             .unwrap();
         assert!(pg.backup_status().unwrap().last_error.is_none());
+        eprintln!("lifecycle stage: invalid archive rejection");
         let invalid = root.join("invalid.dump");
         private_file(&invalid, b"not a PostgreSQL archive").unwrap();
         assert!(pg.restore(invalid).await.is_err());
@@ -659,6 +679,7 @@ mod tests {
             std::fs::read(root.join("database.json")).unwrap(),
             original_config
         );
+        eprintln!("lifecycle stage: empty-account archive rejection");
         assert!(
             pg.restore(empty_backup)
                 .await
@@ -673,11 +694,15 @@ mod tests {
             .execute(&db.pool)
             .await
             .unwrap();
+        eprintln!("lifecycle stage: restore valid backup");
         pg.restore(backup).await.unwrap();
         db.pool.close().await;
+        eprintln!("lifecycle stage: stop PostgreSQL");
         pg.stop();
         drop(pg);
+        eprintln!("lifecycle stage: restart restored database");
         let pg = LocalPostgres::start(&root, &resources).unwrap();
+        eprintln!("lifecycle stage: connect and migrate");
         let db = sbco_infrastructure::Database::connect(&pg.url)
             .await
             .unwrap();
@@ -699,8 +724,10 @@ mod tests {
                 .unwrap();
         assert!(original_exists);
         db.pool.close().await;
+        eprintln!("lifecycle stage: stop PostgreSQL");
         pg.stop();
         drop(pg);
         std::fs::remove_dir_all(root).unwrap();
+        eprintln!("lifecycle stage: complete");
     }
 }

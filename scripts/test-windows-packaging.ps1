@@ -86,4 +86,10 @@ try{Read-Host 'unknown';throw 'Guard failed'}catch{if($_.Exception.Message -notl
 Write-Host 'PASS actual wrapper answers inherited by child setup script; secure password and unknown-prompt refusal.'
 '@)
  & (Join-Path $root 'wrapper.ps1')
+ [IO.File]::WriteAllText((Join-Path $root 'server/Configure-Server.ps1'),'exit 17')
+ $global:LASTEXITCODE=0
+ & (Join-Path $root 'wrapper.ps1')
+ if($LASTEXITCODE -ne 17){throw 'Guided setup failure exit code was swallowed.'}
+ $global:LASTEXITCODE=0
+ Write-Host 'PASS guided setup wrapper propagates child failure exit codes.'
 }finally{if(Test-Path $root){Remove-Item $root -Recurse -Force}}

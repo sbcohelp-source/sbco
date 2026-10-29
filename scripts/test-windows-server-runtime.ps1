@@ -30,6 +30,8 @@ function Invoke-PrivatePowerShell([string]$Script,[string]$Label,[int]$Seconds=6
     $info=[Diagnostics.ProcessStartInfo]::new()
     $info.FileName=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $info.UseShellExecute=$false;$info.CreateNoWindow=$true;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
+    # A raw PS7 ProcessStartInfo otherwise passes incompatible PS7 module paths to PS5.1.
+    $null=$info.Environment.Remove('PSModulePath')
     foreach($argument in @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$Script)){$info.ArgumentList.Add($argument)}
     $process=[Diagnostics.Process]::new();$process.StartInfo=$info
     try {
@@ -126,7 +128,9 @@ function Read-Host([string]$Prompt,[switch]$AsSecureString){
         default {throw 'Unexpected guided setup prompt; fixture must be reviewed.'}
     }
 }
+$global:LASTEXITCODE=0
 & (Join-Path $fixtureAnswers.install 'server\Configure-Server.ps1')
+if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
 '@
     $setupStarted=[DateTime]::UtcNow
     try{Invoke-PrivatePowerShell $wrapper 'guided-setup' 600}
