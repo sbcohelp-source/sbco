@@ -113,5 +113,14 @@ Write-Host 'PASS actual wrapper answers inherited by child setup script; secure 
   $script:fixtureImportStatus='Failed'
   if(-not (& $poll) -or $script:batch.status -cne 'Failed'){throw 'Failed import must terminate polling.'}
   Write-Host 'PASS actual import polling handles non-enumerated JSON arrays and all terminal states.'
+  function Invoke-RestMethod {
+   $response=[Net.Http.HttpResponseMessage]::new([Net.HttpStatusCode]::Forbidden)
+   $response.Content=[Net.Http.StringContent]::new('fixture-response-secret')
+   throw [Microsoft.PowerShell.Commands.HttpResponseException]::new('fixture-error-secret',$response)
+  }
+  try{Call-Server 'query' @{kind='report';password='fixture-request-secret'};throw 'Expected HTTP refusal.'}catch{
+   if($_.Exception.Message -cne 'HTTPS application check failed: query kind=report HTTP=403'){throw 'HTTP diagnostic must contain only path/kind/status and no bodies.'}
+  }
+  Write-Host 'PASS HTTP failure diagnostics retain status and kind without request/response secrets.' 
  } finally { Remove-Variable fixtureImportStatus,batch -Scope Script -ErrorAction SilentlyContinue }
 }

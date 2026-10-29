@@ -45,7 +45,14 @@ function Call-Server([string]$Path,$Body=$null,[hashtable]$ExtraHeaders=@{}) {
     $headers=@{'X-SBCO-Request'='1'};foreach($key in $ExtraHeaders.Keys){$headers[$key]=$ExtraHeaders[$key]}
     $options=@{Uri="https://localhost/api/v1/$Path";WebSession=$script:session;Headers=$headers;TimeoutSec=90;ErrorAction='Stop'}
     if($null -ne $Body){$options.Method='Post';$options.ContentType='application/json';$options.Body=($Body|ConvertTo-Json -Depth 15 -Compress)}
-    try { Invoke-RestMethod @options } catch { throw "HTTPS application check failed: $Path" }
+    try { Invoke-RestMethod @options } catch {
+        $status='transport'
+        if($_.Exception.PSObject.Properties['Response'] -and $null -ne $_.Exception.Response){$status=[string][int]$_.Exception.Response.StatusCode}
+        $kind=''
+        if($Body -is [Collections.IDictionary] -and $Body.Contains('kind') -and [string]$Body.kind -match '^[a-z_]+$'){$kind=" kind=$($Body.kind)"}
+        # Retain only routing/status metadata, never request or response bodies.
+        throw "HTTPS application check failed: $Path$kind HTTP=$status"
+    }
 }
 function Command-Server($Command) { Call-Server 'command' @{request_id=[guid]::NewGuid().ToString();command=$Command} }
 function Assert-ServicesReady {
@@ -195,7 +202,7 @@ if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
     if(-not (Test-Path -LiteralPath (Join-Path $dataPath 'database\cluster\global\pg_control')) -or (Get-Content -LiteralPath (Join-Path $dataPath 'ownership.json') -Raw|ConvertFrom-Json).test_token -cne $token){throw 'Uninstall did not preserve fixture database ownership.'}
     @{result='passed';scope='disposable Windows2025 shared server';source_msi_sha256=$expectedHash;real_guided_setup=$true;services=5;trusted_https=$true;secure_login=$true;template=$true;worker_import_rows=2;pdf=$true;training_reset_isolated=$true;api_crash_recovery=$true;restart_and_repair=$true;uninstall_preserves_database=$true}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $LogDirectory 'server-rehearsal.json')
 }catch{
-    $failure=$_.Exception.Message
+    $failure=$_.Exception.Message+"`n"+$_.ScriptStackTrace
     if($adminPassword){$failure=$failure.Replace($adminPassword,'[REDACTED]')}
     $failure=[regex]::Replace($failure,'postgresql://[^@\s]+@','postgresql://[REDACTED]@')
     $failure|Set-Content -LiteralPath (Join-Path $LogDirectory 'failure.txt')
