@@ -65,3 +65,25 @@ $rows = @(Read-MsiRows $mockDatabase 'SELECT fixture' 2)
 if ($rows.Count -ne 1 -or $rows[0][0] -cne 'ProductName' -or $rows[0][1] -cne 'SBCO Server') { throw 'MSI reader leaked COM method output into rows.' }
 if (@(Read-MsiRows $mockDatabase 'SELECT empty' 2).Count -ne 0) { throw 'Empty MSI view emitted a null record.' }
 Write-Host 'PASS MSI row reader suppresses COM method output and preserves row arrays.'
+
+# Exercise the actual guided-setup prompt wrapper through a separate child script.
+$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'test-windows-server-runtime.ps1'),[ref]$null,[ref]$null)
+$wrapper=$ast.Find({param($node)$node -is [Management.Automation.Language.StringConstantExpressionAst] -and $node.Value.Contains('function Read-Host')},$true).Value
+$root=Join-Path ([IO.Path]::GetTempPath()) ('sbco-wrapper-'+[guid]::NewGuid().ToString('N'))
+try{
+ [IO.Directory]::CreateDirectory((Join-Path $root 'server'))|Out-Null
+ [IO.File]::WriteAllText((Join-Path $root 'wrapper.ps1'),$wrapper)
+ @{install=$root;certificate='fixture-cert';key='fixture-key';password='fixture-secret'}|ConvertTo-Json|Set-Content (Join-Path $root 'answers.json')
+ [IO.File]::WriteAllText((Join-Path $root 'server/Configure-Server.ps1'),@'
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+if((Read-Host 'HTTPS server hostname (must resolve to this computer and match your certificate)') -cne 'localhost'){throw 'Hostname mismatch'}
+if((Read-Host 'Full path to the PEM certificate chain') -cne 'fixture-cert'){throw 'Certificate mismatch'}
+$password=Read-Host 'First administrator password (at least 12 characters)' -AsSecureString
+if($password -isnot [Security.SecureString]){throw 'Not a secure string'}
+$password.Dispose()
+try{Read-Host 'unknown';throw 'Guard failed'}catch{if($_.Exception.Message -notlike 'Unexpected guided setup prompt*'){throw}}
+Write-Host 'PASS actual wrapper answers inherited by child setup script; secure password and unknown-prompt refusal.'
+'@)
+ & (Join-Path $root 'wrapper.ps1')
+}finally{if(Test-Path $root){Remove-Item $root -Recurse -Force}}
