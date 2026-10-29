@@ -43,6 +43,8 @@ jobs:
           }
           ./scripts/test-windows-packaging.ps1
           ./scripts/test-windows-backups.ps1
+          ./scripts/test-windows-initializer.ps1
+          ./scripts/test-windows-initializer-parent.ps1
           yarn install --frozen-lockfile
           if ($LASTEXITCODE -ne 0) { throw 'JavaScript dependencies failed to install.' }
       - name: Download pinned official Windows dependencies

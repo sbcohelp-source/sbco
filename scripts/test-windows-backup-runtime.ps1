@@ -66,7 +66,7 @@ try {
     $tokens=$null; $errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $installPath 'server\Configure-Server.ps1'),[ref]$tokens,[ref]$errors)
     if ($errors.Count) { throw 'Installed setup does not parse.' }
-    foreach ($name in @('New-ServiceConfig','Install-NewService')) {
+    foreach ($name in @('New-ServiceConfig','Install-NewService','Initialize-PostgresDatabase')) {
         $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
         if ($null -eq $definition) { throw "Missing setup helper $name" }
         Invoke-Expression $definition.Extent.Text
@@ -80,12 +80,7 @@ try {
     $password=[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant()
     $passwordFile=Join-Path $DataRoot 'database\init-password'
     Write-Utf8 $passwordFile $password
-    New-ServiceConfig 'SBCOPostgres' (Join-Path $pgBin 'initdb.exe') ('-D "'+$pgData+'" -L "'+(Join-Path $InstallRoot 'postgres\share')+'" -U sbco --auth=scram-sha-256 --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8 --pwfile="'+$passwordFile+'"') @{} @() $false
-    $pgSid=Install-NewService 'SBCOPostgres'
-    Set-PrivateDirectory (Join-Path $DataRoot 'database') @($pgSid) 'Modify'
-    Invoke-Wrapper 'SBCOPostgres' 'start'
-    Wait-Condition { (Get-Service 'SBCOPostgres').Status -eq 'Stopped' } 'isolated initdb' 120
-    if (-not (Test-Path -LiteralPath (Join-Path $pgData 'global\pg_control'))) { throw 'Isolated initdb did not complete.' }
+    $pgSid=Initialize-PostgresDatabase $pgBin $pgData $passwordFile
     Remove-Item -LiteralPath $passwordFile
     Add-Content -LiteralPath (Join-Path $pgData 'postgresql.conf') -Encoding ASCII -Value "`nlisten_addresses='127.0.0.1'`nport=55439`nmax_connections=20`nunix_socket_directories=''"
     New-ServiceConfig 'SBCOPostgres' (Join-Path $pgBin 'postgres.exe') ('-D "'+$pgData+'"') @{} @() $false
@@ -169,8 +164,12 @@ try {
     if ($fixtureCreated) {
         # Only this fixture's PostgreSQL text logs; never config XML, database or dump files.
         $pgLogs=Join-Path $dataPath 'logs\SBCOPostgres'
-        if (Test-Path -LiteralPath $pgLogs) {
-            foreach ($file in Get-ChildItem -LiteralPath $pgLogs -Filter '*.log' -File) {
+        $pgLogFiles=@()
+        if(Test-Path -LiteralPath $pgLogs){$pgLogFiles+=@(Get-ChildItem -LiteralPath $pgLogs -Filter '*.log' -File)}
+        $initLogs=Join-Path $dataPath 'database'
+        if(Test-Path -LiteralPath $initLogs){$pgLogFiles+=@(Get-ChildItem -LiteralPath $initLogs -Filter 'initdb-*.log' -File|Where-Object {$_.Name -match '^initdb-[a-f0-9]{32}\.log$'})}
+        if ($pgLogFiles.Count) {
+            foreach ($file in $pgLogFiles) {
                 try {
                     $text=(Get-Content -LiteralPath $file.FullName -Tail 2000) -join "`n"
                     if ($password) { $text=$text.Replace($password,'[REDACTED]') }

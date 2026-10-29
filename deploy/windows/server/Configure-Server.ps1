@@ -121,14 +121,38 @@ https://$hostnameValue {
         Set-PrivateDirectory (Join-Path $DataRoot "logs\$Name") @($sid) 'Modify'
         return $sid
     }
+    function Initialize-PostgresDatabase([string]$PgBin, [string]$PgData, [string]$PasswordFile) {
+        if ((Test-Path -LiteralPath (Join-Path $PgData 'PG_VERSION')) -or (Test-Path -LiteralPath (Join-Path $PgData 'global\pg_control'))) { throw 'Existing PostgreSQL cluster will not be initialized again.' }
+        $nonce = [guid]::NewGuid().ToString('N')
+        $configurationPath = Join-Path $DataRoot "database\init-configuration-$nonce.json"
+        $resultPath = Join-Path $DataRoot "database\init-result-$nonce.json"
+        if ((Test-Path -LiteralPath $configurationPath) -or (Test-Path -LiteralPath $resultPath)) { throw 'Fresh initialization paths are already occupied.' }
+        $arguments = @('-D', $PgData, '-L', (Join-Path $InstallRoot 'postgres\share'), '-U', 'sbco', '--auth=scram-sha-256', '--encoding=UTF8', '--locale-provider=builtin', '--builtin-locale=C.UTF-8', "--pwfile=$PasswordFile")
+        Write-Utf8 $configurationPath (@{format=1;nonce=$nonce;executable=(Join-Path $PgBin 'initdb.exe');arguments=$arguments;result_path=$resultPath} | ConvertTo-Json -Depth 4)
+        # WinSW 2's LocalService completion callback cannot stop a short-lived child.
+        # The initializer records the real exit code and waits for our explicit stop.
+        $initializer = Join-Path $InstallRoot 'server\Initialize-Postgres.ps1'
+        if (-not (Test-Path -LiteralPath $initializer)) { throw 'Packaged PostgreSQL initializer is missing.' }
+        $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        New-ServiceConfig 'SBCOPostgres' $powershell ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$initializer+'" -ConfigurationPath "'+$configurationPath+'"') @{} @() $false
+        $sid = Install-NewService 'SBCOPostgres'
+        Set-PrivateDirectory (Join-Path $DataRoot 'database') @($sid) 'Modify'
+        try {
+            Invoke-Wrapper 'SBCOPostgres' 'start'
+            Wait-Condition { Test-Path -LiteralPath $resultPath } 'database initialization result' 180
+            $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+            if ($result.format -ne 1 -or $result.nonce -cne $nonce -or ($result.exit_code -isnot [int] -and $result.exit_code -isnot [long]) -or $result.exit_code -lt 0 -or $result.exit_code -gt [int]::MaxValue) { throw 'PostgreSQL initialization result is invalid or stale.' }
+        } finally {
+            if ((Get-Service 'SBCOPostgres').Status -ne 'Stopped') { Invoke-Wrapper 'SBCOPostgres' 'stop' }
+            Wait-Condition { (Get-Service 'SBCOPostgres').Status -eq 'Stopped' } 'stop database initializer'
+        }
+        if ($result.exit_code -ne 0) { throw ('Database initialization failed. Inspect the protected database/initdb-'+$nonce+'.log file.') }
+        if (-not (Test-Path -LiteralPath (Join-Path $PgData 'global\pg_control')) -or (Get-Content -LiteralPath (Join-Path $PgData 'PG_VERSION') -Raw).Trim() -ne '18') { throw 'Database initialization did not produce a PostgreSQL 18 cluster.' }
+        Remove-Item -LiteralPath $configurationPath, $resultPath -Force
+        return $sid
+    }
     # Initialize and run PostgreSQL under the SAME restricted service identity.
-    # Builtin C.UTF-8 avoids relying on a Windows libc locale name.
-    New-ServiceConfig 'SBCOPostgres' (Join-Path $pgBin 'initdb.exe') ('-D "'+$pgData+'" -L "'+(Join-Path $InstallRoot 'postgres\share')+'" -U sbco --auth=scram-sha-256 --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8 --pwfile="'+$passwordFile+'"') @{} @() $false
-    $pgSid=Install-NewService 'SBCOPostgres'
-    Set-PrivateDirectory (Join-Path $DataRoot 'database') @($pgSid) 'Modify'
-    Invoke-Wrapper 'SBCOPostgres' 'start'
-    Wait-Condition { (Get-Service 'SBCOPostgres').Status -eq 'Stopped' } 'database initialization' 180
-    if(-not (Test-Path (Join-Path $pgData 'global\pg_control')) -or (Get-Content (Join-Path $pgData 'PG_VERSION') -Raw).Trim() -ne '18'){throw 'Database initialization failed. Inspect the protected PostgreSQL logs.'}
+    $pgSid = Initialize-PostgresDatabase $pgBin $pgData $passwordFile
     Remove-Item -LiteralPath $passwordFile -Force
     Add-Content -LiteralPath (Join-Path $pgData 'postgresql.conf') -Encoding ASCII -Value "`nlisten_addresses='127.0.0.1'`nport=55439`nmax_connections=50`nshared_buffers='128MB'`nunix_socket_directories=''"
     New-ServiceConfig 'SBCOPostgres' (Join-Path $pgBin 'postgres.exe') ('-D "'+$pgData+'"')

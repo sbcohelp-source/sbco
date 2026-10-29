@@ -64,6 +64,7 @@ function Save-SafeDiagnostics {
     $files=@()
     if(Test-Path -LiteralPath $privateRoot){$files+=@(Get-ChildItem -LiteralPath $privateRoot -Filter '*.log' -File)}
     if($fixtureCreated -and (Test-Path -LiteralPath (Join-Path $dataPath 'logs'))){$files+=@(Get-ChildItem -LiteralPath (Join-Path $dataPath 'logs') -Filter '*.log' -File -Recurse)}
+    if($fixtureCreated -and (Test-Path -LiteralPath (Join-Path $dataPath 'database'))){$files+=@(Get-ChildItem -LiteralPath (Join-Path $dataPath 'database') -Filter 'initdb-*.log' -File | Where-Object {$_.Name -match '^initdb-[a-f0-9]{32}\.log$'})}
     $index=0
     foreach($file in $files){
         $text=(Get-Content -LiteralPath $file.FullName -Tail 1000) -join "`n"
@@ -168,6 +169,19 @@ if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
     if((Call-Server 'me' $null $trainingHeaders).role -cne 'Pa'){throw 'Training role switching failed.'}
     $null=Call-Server 'training/reset' @{generation=$training.generation;confirmation='DELETE TRAINING'}
     if((Call-Server 'training').available -or (Call-Server 'query' @{kind='report';report='Transactions';filter=$filter}).totals.total -ne 2){throw 'Training reset affected live fixture records.'}
+    # Terminate only the fixture API child of its registered wrapper, not any other process.
+    $apiService=Get-CimInstance Win32_Service -Filter "Name='SBCOApi'"
+    $apiChildren=@(Get-CimInstance Win32_Process -Filter "Name='sbco-api.exe'" | Where-Object { $_.ParentProcessId -eq $apiService.ProcessId -and $_.ExecutablePath -ieq (Join-Path $installPath 'bin\sbco-api.exe') })
+    if($apiChildren.Count -ne 1){throw 'Expected one exact-owned API child for crash recovery check.'}
+    $oldApiPid=$apiChildren[0].ProcessId
+    Stop-Process -Id $oldApiPid -Force
+    Wait-Condition {
+        $currentService=Get-CimInstance Win32_Service -Filter "Name='SBCOApi'"
+        $children=@(Get-CimInstance Win32_Process -Filter "Name='sbco-api.exe'" | Where-Object { $_.ParentProcessId -eq $currentService.ProcessId -and $_.ExecutablePath -ieq (Join-Path $installPath 'bin\sbco-api.exe') -and $_.ProcessId -ne $oldApiPid })
+        if($currentService.State -ne 'Running' -or $children.Count -ne 1){return $false}
+        try{(Invoke-WebRequest -Uri 'https://localhost/api/v1/server-info' -TimeoutSec 5).StatusCode -eq 200}catch{$false}
+    } 'API child crash recovery through Windows service policy' 120
+    if((Call-Server 'query' @{kind='report';report='Transactions';filter=$filter}).totals.total -ne 2){throw 'API crash recovery lost fixture records.'}
     # Exercise actual maintenance under Windows PowerShell5.1, then MSI repair.
     $maintenance=Join-Path $privateRoot 'maintenance.ps1'
     Write-Utf8 $maintenance ("`$ErrorActionPreference='Stop'`n& "+"'"+(Join-Path $installPath 'server\Manage-Services.ps1').Replace("'","''")+"' -Action Stop`n& '"+(Join-Path $installPath 'server\Manage-Services.ps1').Replace("'","''")+"' -Action Resume")
@@ -179,7 +193,7 @@ if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
     Invoke-RehearsalMsi '/x' $productCode 'configured-server-uninstall'
     if(Get-Service -Name 'SBCO*' -ErrorAction SilentlyContinue){throw 'Uninstall retained a server service.'}
     if(-not (Test-Path -LiteralPath (Join-Path $dataPath 'database\cluster\global\pg_control')) -or (Get-Content -LiteralPath (Join-Path $dataPath 'ownership.json') -Raw|ConvertFrom-Json).test_token -cne $token){throw 'Uninstall did not preserve fixture database ownership.'}
-    @{result='passed';scope='disposable Windows2025 shared server';source_msi_sha256=$expectedHash;real_guided_setup=$true;services=5;trusted_https=$true;secure_login=$true;template=$true;worker_import_rows=2;pdf=$true;training_reset_isolated=$true;restart_and_repair=$true;uninstall_preserves_database=$true}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $LogDirectory 'server-rehearsal.json')
+    @{result='passed';scope='disposable Windows2025 shared server';source_msi_sha256=$expectedHash;real_guided_setup=$true;services=5;trusted_https=$true;secure_login=$true;template=$true;worker_import_rows=2;pdf=$true;training_reset_isolated=$true;api_crash_recovery=$true;restart_and_repair=$true;uninstall_preserves_database=$true}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $LogDirectory 'server-rehearsal.json')
 }catch{
     $failure=$_.Exception.Message
     if($adminPassword){$failure=$failure.Replace($adminPassword,'[REDACTED]')}
