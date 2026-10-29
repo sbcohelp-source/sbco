@@ -40,6 +40,8 @@ Deletion requires reviewing the workspace counts and typing DELETE TRAINING. The
 
 ## Pending work
 
+The [configured Windows server replacement rehearsal](https://github.com/sbcohelp-source/sbco/actions/runs/40889683192) now passes for the tested pair of version 0.1.0 packages. It preserves accounts, sessions, transactions, configuration, backup schedules and existing archives, and verifies a new SYSTEM backup, API recovery, restart, repair and uninstall preservation. This does not certify future application/schema upgrades or office Windows 10/11 machines.
+
 1. **Connected Windows qualification:** HTTPS desktop mode is implemented and passed installed Linux acceptance. Execute its MSI and the same workflows on Windows clients against the intended Linux and Windows hosts.
 2. **Windows delivery:** server, client and standalone unsigned MSIs have been generated. Server/client installation, repair and uninstall pass on a disposable Windows 2025 runner. The native standalone PostgreSQL lifecycle and full configured server rehearsal now pass on Windows 2025. Standalone install/repair/uninstall smoke also passes. The SYSTEM-backup/restore rehearsal also passes. Hosted evidence does not qualify office Windows 10/11 machines. No office Windows machines or signing identities have been supplied. Verify actual Windows 10/11 edition/build and supported servicing before rollout.
 3. **Office operator acceptance:** review the prepared DPR/MPR/letter samples and complete [the checklist](ACCEPTANCE_CHECKLIST.md), then reconcile authorized real office data and run a pilot. Synthetic tests do not replace approval.
