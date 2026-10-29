@@ -93,3 +93,25 @@ Write-Host 'PASS actual wrapper answers inherited by child setup script; secure 
  $global:LASTEXITCODE=0
  Write-Host 'PASS guided setup wrapper propagates child failure exit codes.'
 }finally{if(Test-Path $root){Remove-Item $root -Recurse -Force}}
+
+# Invoke-RestMethod emits a JSON array as one pipeline object. Exercise the actual
+# polling expression so property filtering cannot accidentally inspect the array.
+& {
+ $call=$ast.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Call-Server'},$true)
+ Invoke-Expression $call.Extent.Text
+ $poll=$ast.Find({param($node)$node -is [Management.Automation.Language.ScriptBlockExpressionAst] -and $node.Extent.Text.StartsWith('{$script:batch=')},$true).ScriptBlock.GetScriptBlock()
+ $script:session=$null
+ $import=[pscustomobject]@{id='fixture-import'}
+ $script:fixtureImportStatus='Queued'
+ function Invoke-RestMethod {
+  Write-Output -NoEnumerate @([pscustomobject]@{id='other-import';status='Completed'},[pscustomobject]@{id='fixture-import';status=$script:fixtureImportStatus;inserted=2})
+ }
+ try {
+  if(& $poll){throw 'Queued import must not be considered complete.'}
+  $script:fixtureImportStatus='Completed'
+  if(-not (& $poll) -or $script:batch.id -cne 'fixture-import' -or $script:batch.inserted -ne 2){throw 'Completed import array response was not selected correctly.'}
+  $script:fixtureImportStatus='Failed'
+  if(-not (& $poll) -or $script:batch.status -cne 'Failed'){throw 'Failed import must terminate polling.'}
+  Write-Host 'PASS actual import polling handles non-enumerated JSON arrays and all terminal states.'
+ } finally { Remove-Variable fixtureImportStatus,batch -Scope Script -ErrorAction SilentlyContinue }
+}

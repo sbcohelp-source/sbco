@@ -155,7 +155,7 @@ if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
     $content=& python -c "import sys,base64;sys.path.insert(0,'tests');import integration;print(base64.b64encode(integration.workbook('WIN-SMOKE',count=2)).decode())"
     if($LASTEXITCODE -ne 0){throw 'Existing workbook fixture generator failed.'}
     $import=Command-Server @{kind='import';filename='windows-rehearsal.xlsx';content_base64=[string]$content}
-    Wait-Condition {$script:batch=@(Call-Server 'query' @{kind='imports'}|Where-Object id -eq $import.id)[0];$script:batch.status -in @('Completed','Failed')} 'Windows worker import' 120
+    Wait-Condition {$script:batch=@((Call-Server 'query' @{kind='imports'})|Where-Object id -eq $import.id)[0];$script:batch.status -in @('Completed','Failed')} 'Windows worker import' 120
     if($batch.status -cne 'Completed' -or $batch.inserted -ne 2){throw 'Windows worker did not import both fixture transactions.'}
     $filter=@{office='WIN-SMOKE';status=$null;search=$null;from_date=$null;to_date=$null;queue='all'}
     $report=Call-Server 'query' @{kind='report';report='Transactions';filter=$filter}
