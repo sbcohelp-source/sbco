@@ -79,7 +79,75 @@ $ownedRoots=[Collections.Generic.List[string]]::new()
 $knownProcesses=@{}
 $startedAt=[DateTime]::UtcNow
 $application=$null;$driverPath=$null;$productCode=$null;$installAttempted=$false;$timedOut=$false
+$webViewPolicyState=@{values=@();created_keys=@()}
 $installer=New-Object -ComObject WindowsInstaller.Installer
+function Test-GuiPolicyValueOwned($Actual,$Kind,[string]$Expected) {
+    return [bool]($Kind -eq [Microsoft.Win32.RegistryValueKind]::String -and $Actual -is [string] -and $Actual -ceq $Expected)
+}
+function Save-GuiPolicyJournal {
+    $webViewPolicyState | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $privateRoot 'webview-policy-ownership.json')
+}
+function Install-GuiWebViewPolicy([int]$Port) {
+    if ([IO.Path]::GetFileName($application) -cne 'sbco-desktop.exe' -or $Port -lt 1 -or $Port -gt 65535) { throw 'Invalid exact application debugging policy target.' }
+    $basePath='SOFTWARE\Policies\Microsoft\Edge\WebView2'
+    $scopes=@('AdditionalBrowserArguments','UserDataFolder')
+    $refusalScopes=$scopes+@('BrowserExecutableFolder','ChannelSearchKind','ReleaseChannels')
+    $names=@('sbco-desktop.exe','in.sbco.vouchercheck','*')
+    # Elevated WebView2 honors HKLM policies. Refuse every relevant existing
+    # override in both registry views/hives; never replace an office policy.
+    foreach ($hive in @([Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryHive]::CurrentUser)) {
+        foreach ($view in @([Microsoft.Win32.RegistryView]::Registry64,[Microsoft.Win32.RegistryView]::Registry32)) {
+            $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey($hive,$view)
+            try {
+                foreach ($scope in $refusalScopes) {
+                    $key=$base.OpenSubKey($basePath+'\'+$scope)
+                    if ($key) { try { foreach ($name in $key.GetValueNames()) { if ($name -in $names) { throw 'Existing SBCO or wildcard WebView2 policy found; refusing fixture override.' } } } finally { $key.Dispose() } }
+                }
+            } finally { $base.Dispose() }
+        }
+    }
+    $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        foreach ($scope in $scopes) {
+            $path=$basePath+'\'+$scope
+            $prefix=''
+            foreach ($part in $path.Split('\')) {
+                $prefix=if ($prefix) { $prefix+'\'+$part } else { $part }
+                $existing=$base.OpenSubKey($prefix)
+                if ($existing) { $existing.Dispose();continue }
+                $webViewPolicyState.created_keys+=@($prefix);Save-GuiPolicyJournal
+                $created=$base.CreateSubKey($prefix);$created.Dispose()
+            }
+            $expected=if ($scope -eq 'AdditionalBrowserArguments') { '--remote-debugging-address=127.0.0.1 --remote-debugging-port='+$Port } else { Join-Path $privateRoot 'webview' }
+            $key=$base.OpenSubKey($path,$true)
+            try {
+                foreach ($name in $key.GetValueNames()) { if ($name -in $names) { throw 'WebView2 policy changed during fixture setup; refusing overwrite.' } }
+                $webViewPolicyState.values+=@(@{path=$path;name='sbco-desktop.exe';expected=$expected});Save-GuiPolicyJournal
+                $key.SetValue('sbco-desktop.exe',$expected,[Microsoft.Win32.RegistryValueKind]::String)
+            } finally { $key.Dispose() }
+        }
+    } finally { $base.Dispose() }
+}
+function Remove-GuiWebViewPolicy {
+    $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        foreach ($owned in $webViewPolicyState.values) {
+            $key=$base.OpenSubKey($owned.path,$true)
+            if (-not $key) { continue }
+            try {
+                if ($owned.name -notin $key.GetValueNames()) { continue }
+                if (-not (Test-GuiPolicyValueOwned $key.GetValue($owned.name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) $key.GetValueKind($owned.name) $owned.expected)) { throw 'WebView2 policy ownership changed; preserve it.' }
+                $key.DeleteValue($owned.name,$false)
+            } finally { $key.Dispose() }
+        }
+        foreach ($path in @($webViewPolicyState.created_keys | Sort-Object Length -Descending)) {
+            $key=$base.OpenSubKey($path)
+            if (-not $key) { continue }
+            try { $empty=$key.SubKeyCount -eq 0 -and $key.ValueCount -eq 0 } finally { $key.Dispose() }
+            if ($empty) { $base.DeleteSubKey($path,$false) }
+        }
+    } finally { $base.Dispose() }
+}
 function Test-GuiChildIdentity($Child,$Parent) {
     # Windows can retain a dead parent's PID after that number is reused. Only
     # children created at/after this exact parent instance belong to its tree.
@@ -308,8 +376,11 @@ try {
     @{os=$os.Caption;build=$os.BuildNumber;session=[Diagnostics.Process]::GetCurrentProcess().SessionId;runtime=$matching.runtime;driver_version=$matching.version;driver_source=$matching.source;driver_sha256=$matching.sha256;msi_sha256=$verified.sha256;product_code=$productCode;upgrade_code=$properties.UpgradeCode;known_folders=$knownRoots;windows_10_11_qualified=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory 'environment.json')
     foreach ($root in $knownRoots) { New-PrivateGuiRoot $root $token;$ownedRoots.Add($root) }
     $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
+    $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$listener.Start();$debugPort=$listener.LocalEndpoint.Port;$listener.Stop()
+    if ($debugPort -eq $port) { throw 'Driver and WebView2 debugging ports must be distinct.' }
+    Install-GuiWebViewPolicy $debugPort
     $config=Join-Path $privateRoot 'driver-config.json'
-    @{private_root=$privateRoot;evidence_root=$LogDirectory;port=$port;driver=$driverPath;application=$application;runtime_version=$matching.runtime} | ConvertTo-Json | Set-Content -LiteralPath $config
+    @{private_root=$privateRoot;evidence_root=$LogDirectory;port=$port;debug_port=$debugPort;driver=$driverPath;application=$application;runtime_version=$matching.runtime} | ConvertTo-Json | Set-Content -LiteralPath $config
     $python=(Get-Command python -ErrorAction Stop).Source
     foreach ($phase in @('setup','reopen')) {
         $process=Start-Process -FilePath $python -ArgumentList ('"'+(Join-Path $PSScriptRoot '..\tests\windows_standalone_gui.py')+'" --config "'+$config+'" --phase '+$phase) -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $privateRoot "$phase.out") -RedirectStandardError (Join-Path $privateRoot "$phase.err")
@@ -336,13 +407,15 @@ try {
     @{type=$_.Exception.GetType().Name;message=$_.Exception.Message} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory 'fixture-failure.json')
     throw 'Installed standalone GUI gate failed; inspect sanitized evidence.'
 } finally {
-    $stopped=$false
+    $stopped=$false;$policiesRemoved=$false
     try { if ($application) { Stop-GuiProcesses };$stopped=$true } catch { Write-Warning 'Owned processes could not be stopped; fixture data retained.' }
+    if ($stopped) { try { Remove-GuiWebViewPolicy;$policiesRemoved=$true;if ($webViewPolicyState.values.Count -gt 0) { @{exact_app_policy_removed=$true;ordinary_user_qualified=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory 'policy-cleanup.json') } } catch { Write-Warning 'Owned WebView2 policy cleanup was refused; private journal retained.' } }
     if ($stopped -and $installAttempted -and -not $timedOut -and $productCode -and $installer.ProductState($productCode) -ne -1) {
         try { Invoke-Msi '/x' $productCode 'gui-cleanup-uninstall' } catch { Write-Warning 'Owned MSI cleanup failed; fixture retained.' }
     }
-    if ($stopped -and -not $timedOut -and (-not $installAttempted -or $installer.ProductState($productCode) -eq -1)) {
+    if ($stopped -and $policiesRemoved -and -not $timedOut -and (-not $installAttempted -or $installer.ProductState($productCode) -eq -1)) {
         foreach ($root in $ownedRoots) { try { Assert-OwnedGuiRoot $root $token $allowedRoots;Remove-Item -LiteralPath $root -Recurse -Force } catch { Write-Warning 'Fixture ownership cleanup was refused; directory retained.' } }
     }
     [Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)|Out-Null
+    if (-not $policiesRemoved -and ($webViewPolicyState.values.Count -gt 0 -or $webViewPolicyState.created_keys.Count -gt 0)) { throw 'Fixture policy cleanup incomplete; inspect retained ownership journal on runner.' }
 }

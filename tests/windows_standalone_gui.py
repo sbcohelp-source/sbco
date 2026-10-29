@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import re
 import secrets
-import socket
 import subprocess
 import sys
 import time
@@ -114,21 +113,22 @@ def run(config, phase):
                 raise GuiFailure("Edge driver did not become ready")
             time.sleep(.2)
         stage = "supervised installed application startup"
-        with socket.socket() as listener:
-            listener.bind(("127.0.0.1", 0))
-            debug_port = listener.getsockname()[1]
-        # Microsoft's documented attach flow: debugging is enabled for this
-        # fixture child only, bound to loopback; no application/security changes.
-        application_env = os.environ.copy()
-        application_env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (
-            "--remote-debugging-address=127.0.0.1 --remote-debugging-port=" + str(debug_port))
-        application_env["WEBVIEW2_USER_DATA_FOLDER"] = str(private / "webview")
+        # The elevated hosted fixture installs documented, exact-app HKLM
+        # WebView2 overrides and removes them after this owned application stops.
+        # Environment overrides are intentionally absent: WebView2 ignores them
+        # for elevated hosts. This does not qualify ordinary-user/Windows10/11 use.
+        debug_port = config["debug_port"]
         application_streams = [open(private / (phase + "-application." + stream), "wb")
                                for stream in ("stdout", "stderr")]
-        application = subprocess.Popen([config["application"]], env=application_env,
+        application = subprocess.Popen([config["application"]],
                                        stdin=subprocess.DEVNULL, stdout=application_streams[0],
                                        stderr=application_streams[1])
         launched_at = time.monotonic()
+        (evidence / (phase + "-launch.json")).write_text(json.dumps({
+            "application_pid": application.pid, "debug_port": debug_port,
+            "debug_configuration": "temporary exact-app HKLM policy", "elevated_host": True,
+            "ordinary_user_qualified": False,
+        }, indent=2), encoding="utf-8")
 
         def debugger_ready():
             try:
@@ -214,7 +214,7 @@ def run(config, phase):
             "result": "passed", "phase": phase, "native_ipc": True, "visible_sign_in": True,
             "overview": True, "help_search": True, "runtime_version": observed_version,
             "account_persisted_after_restart": phase == "reopen", "console_error_capture": "after WebDriver attachment",
-            "native_dialogs_tested": False, "windows_10_11_qualified": False,
+            "native_dialogs_tested": False, "windows_10_11_qualified": False, "ordinary_user_qualified": False,
         }, indent=2), encoding="utf-8")
         print("PASS installed standalone GUI " + phase + ": visible sign-in, Overview, Help and screenshots", flush=True)
     except Exception as error:
