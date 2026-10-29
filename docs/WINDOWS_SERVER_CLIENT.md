@@ -2,21 +2,21 @@
 
 The repository now has separate build paths for **SBCO Server** and **SBCO Client**, plus the original standalone desktop configuration. These are distinct products with separate upgrade identities. They must not replace one another during installation.
 
-Unsigned server and client MSI files have been generated on Windows. [Packaging smoke 40864684093](https://github.com/sbcohelp-source/sbco/actions/runs/40864684093), using build `40859997236`, passed all six fresh-install, repair and uninstall operations with exit code 0, verified package identities/checksums and confirmed server data-marker preservation. This is hosted packaging evidence. The latest setup and backup fixes still require full service and restore rehearsals; Windows 10/11 office qualification and signing remain separate gates.
+Unsigned server and client MSI files have been generated on Windows. [Packaging smoke 40876179179](https://github.com/sbcohelp-source/sbco/actions/runs/40876179179) passed against build `40873108070` (source `9ec44f9`). [Full server rehearsal 40876186784](https://github.com/sbcohelp-source/sbco/actions/runs/40876186784) then passed actual setup, all five services, trusted HTTPS, application workflows, API crash recovery, repair and uninstall data preservation against that same server MSI. Scheduled backup/restore qualification remains separate. These results cover the hosted Windows 2025 image; Windows 10/11 office qualification and signing remain separate gates.
 
 ## What each package does
 
-| Package         | Purpose                                                                                                              | Database                                                                       |
-| --------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| SBCO Server     | Runs the shared application, background imports, web pages and HTTPS endpoint on a Windows 10/11 x64 office computer | PostgreSQL 18.6 on that server, listening only on loopback                     |
-| SBCO Client     | Installed desktop client that connects to an explicitly configured HTTPS SBCO Server                                 | No local PostgreSQL, migrations, background worker or database backup controls |
-| SBCO standalone | Existing offline desktop design, built separately with `tauri.windows.conf.json`                                     | Own local PostgreSQL; Windows runtime acceptance remains pending               |
+| Package         | Purpose                                                                                                              | Database                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| SBCO Server     | Runs the shared application, background imports, web pages and HTTPS endpoint on a Windows 10/11 x64 office computer | PostgreSQL 18.6 on that server, listening only on loopback                            |
+| SBCO Client     | Installed desktop client that connects to an explicitly configured HTTPS SBCO Server                                 | No local PostgreSQL, migrations, background worker or database backup controls        |
+| SBCO standalone | Existing offline desktop design, built separately with `tauri.windows.conf.json`                                     | Own local PostgreSQL; hosted native recovery passed, Windows 10/11 acceptance pending |
 
 A browser may also open the server's HTTPS address. Server and connected-client installations use the same accounts and records. The server must remain running for connected clients to work. Training remains personal to the authenticated account and separate from live records on that server.
 
 ## Build the installers
 
-Run **Build Windows server and client installers** in GitHub Actions on the intended commit. The workflow runs only when manually dispatched and uploads server/client MSI files and SHA-256 checksums. It does not publish releases, sign packages or silently install them on office computers.
+Run **Build Windows server and client installers** in GitHub Actions on the intended commit. By default it builds both editions. Clear **Also build and test the connected-client MSI** when only a server rebuild is needed; that run contains no client artifact and can feed the server/backup rehearsals. The combined installer smoke requires a run containing both editions. The workflow runs only when manually dispatched and uploads the selected MSI files and SHA-256 checksums. It does not publish releases, sign packages or silently install them on office computers.
 
 `deploy/windows/dependencies.json` records exact official download URLs and pins:
 
@@ -102,4 +102,4 @@ This rehearsal does not configure an office, issue a TLS certificate, create an 
 
 The script checks all five services, trusted HTTPS, secure session-cookie flags, sign-in, a downloaded setup workbook, a two-row import processed by the worker, a PDF export, isolated training creation/reset, API child crash recovery, explicit service restart, configured MSI repair and uninstall data preservation. Only the exact API child of the owned service wrapper is terminated for the crash test. Subprocesses and installer calls have time limits. Credentials, private keys, database files and dumps are excluded from artifacts; sanitized service/initializer logs and result metadata are retained.
 
-The full rehearsal has not passed yet. Its earlier executions exposed a test launcher module-path issue and the short-lived WinSW initializer issue; both have source corrections and regression checks. The next run must use an MSI containing `Initialize-Postgres.ps1`. This pending qualification is distinct from the already successful packaging-only smoke.
+[Run 40876186784](https://github.com/sbcohelp-source/sbco/actions/runs/40876186784) passed all checks above against installer build `40873108070`, source `9ec44f9`. The verified server MSI SHA-256 is `4a6db2eaa79589fd390d134c913177dba779f44e10aa6fad55bf6eacf6085a51`; the retained `server-rehearsal.json` records five services, two imported rows and each successful lifecycle check. This includes the protected initializer handshake and actual API crash recovery without additional service-control grants. Later installer revisions must repeat the relevant checks. This hosted success does not qualify a real office's Windows 10/11 machine, certificate, firewall, backup storage or installed client GUI.

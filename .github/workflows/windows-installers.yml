@@ -1,6 +1,11 @@
 name: Build Windows server and client installers
 on:
   workflow_dispatch:
+    inputs:
+      include_client:
+        description: Also build and test the connected-client MSI
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
@@ -50,6 +55,10 @@ jobs:
       - name: Download pinned official Windows dependencies
         run: |
           ./scripts/get-windows-build-dependencies.ps1 -Destination (Join-Path $env:RUNNER_TEMP 'sbco-verified-inputs')
+      - name: Verify native backup connection selection
+        run: |
+          $inputs = Get-Content (Join-Path $env:RUNNER_TEMP 'sbco-verified-inputs/inputs.json') -Raw | ConvertFrom-Json
+          ./scripts/test-backup-libpq.ps1 -PgDumpPath (Join-Path $inputs.postgres_root 'bin/pg_dump.exe')
       - name: Build SBCO Server MSI
         run: |
           $inputs = Get-Content (Join-Path $env:RUNNER_TEMP 'sbco-verified-inputs/inputs.json') -Raw | ConvertFrom-Json
@@ -70,9 +79,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Build SBCO Client MSI
+        if: ${{ inputs.include_client }}
         run: |
           ./scripts/build-connected-client-msi.ps1 -SkipDependencyInstall
       - name: Upload SBCO Client installer
+        if: ${{ inputs.include_client }}
         uses: actions/upload-artifact@v4
         with:
           name: sbco-client-windows-x64-unsigned
@@ -82,6 +93,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Verify native connected-client transport on Windows
+        if: ${{ inputs.include_client }}
         run: |
           cargo test --release --target x86_64-pc-windows-msvc --manifest-path apps/desktop/src-tauri/Cargo.toml --features connected-client --locked transport::tests
           if ($LASTEXITCODE -ne 0) { throw 'Windows connected-client transport tests failed.' }

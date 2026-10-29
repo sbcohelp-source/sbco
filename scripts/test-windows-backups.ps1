@@ -3,7 +3,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Join-Path ([IO.Path]::GetTempPath()) ('sbco-backup-test-' + [guid]::NewGuid().ToString('N'))
-$envBefore = @{ProgramData=$env:ProgramData; SystemRoot=$env:SystemRoot; PGDATABASE=$env:PGDATABASE}
+$envBefore = @{ProgramData=$env:ProgramData; SystemRoot=$env:SystemRoot}
+foreach($key in @('PGHOST','PGHOSTADDR','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSERVICE')){$envBefore[$key]=[Environment]::GetEnvironmentVariable($key)}
 function Assert([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
 function Refuses([scriptblock]$Operation, [string]$Message) {
     $refused=$false; try { & $Operation | Out-Null } catch { $refused=$true }
@@ -29,11 +30,14 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     $owned=@{format=1; install_root=$InstallRoot; created_at='2026-10-29T00:00:00Z'}
     Write-BackupJson (Join-Path $DataRoot 'ownership.json') $owned
     Write-BackupJson (Join-Path $DataRoot 'configured.json') @{ready=$true}
-    Write-Utf8 (Join-Path $DataRoot 'services/SBCOApi/SBCOApi.xml') '<service><env name="DATABASE_URL" value="postgresql://sbco:test-only@127.0.0.1:55439/sbco" /></service>'
+    Write-Utf8 (Join-Path $DataRoot 'services/SBCOApi/SBCOApi.xml') '<service><env name="DATABASE_URL" value="postgresql://sbco:test-only%3A%40%2F%25@127.0.0.1:55439/sbco" /></service>'
     $settings=@{format=1; install_root=$InstallRoot; enabled=$true; time='02:00'; retention=2}
     Write-BackupJson (Join-Path $DataRoot 'backup-schedule.json') $settings
     $script:archiveFails=$false
     function Invoke-BackupArchive([string]$Partial) {
+        Assert ($env:PGHOST -ceq '127.0.0.1' -and $env:PGHOSTADDR -ceq '127.0.0.1' -and $env:PGPORT -ceq '55439') 'Backup lost its validated endpoint'
+        Assert ($env:PGUSER -ceq 'sbco' -and $env:PGPASSWORD -ceq 'test-only:@/%' -and $env:PGDATABASE -ceq 'sbco') 'Backup URI fields or password decoding are incorrect'
+        Assert (-not $env:PGSERVICE) 'Inherited libpq service can override the configured endpoint'
         [IO.File]::WriteAllText($Partial, 'PGDMP portable fixture ' + [guid]::NewGuid())
         if($script:archiveFails){throw 'fixture failure with sensitive detail that must not persist'}
     }
@@ -50,13 +54,15 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     $foreign=Join-Path $folder ('auto-20200101-000000-'+('b'*32)+'.dump'); Write-Utf8 $foreign 'untracked real data'
     $corrupt=New-ArchiveFixture ('auto-20200102-000000-'+('c'*32)+'.dump') $owned.created_at $true
     $otherInstall=New-ArchiveFixture ('auto-20200103-000000-'+('d'*32)+'.dump') 'other-instance'
-    $env:PGDATABASE='previous-environment'; $script:archiveFails=$true
+    $priorPg=@{PGHOST='prior-host';PGHOSTADDR='prior-address';PGPORT='123';PGUSER='prior-user';PGPASSWORD='prior-password';PGDATABASE='previous-environment';PGSERVICE='prior-service'}
+    foreach($key in $priorPg.Keys){[Environment]::SetEnvironmentVariable($key,$priorPg[$key])}
+    $script:archiveFails=$true
     Refuses {Invoke-ServerBackup $true} 'Failed archive must fail operation'
     Assert (@(Get-ChildItem -LiteralPath $folder -Filter '*.dump').Count -eq 7) 'Failure pruned backups'
     Assert (@(Get-ChildItem -LiteralPath $folder -Filter '*.partial').Count -eq 0) 'Failure left partial file'
     $status=Get-Content (Join-Path $DataRoot 'backup-status.json') -Raw
     Assert ($status -match 'failed' -and $status -notmatch 'sensitive|test-only') 'Failure status leaked details or missed failure'
-    Assert ($env:PGDATABASE -ceq 'previous-environment') 'Database environment not restored after failure'
+    foreach($key in $priorPg.Keys){Assert ([Environment]::GetEnvironmentVariable($key) -ceq $priorPg[$key]) "$key not restored after failure"}
     $script:archiveFails=$false; Invoke-ServerBackup $false
     $manual=@(Get-ChildItem -LiteralPath $folder -Filter 'sbco-*.dump')
     Assert ($manual.Count -eq 1) 'Manual backup missing'
@@ -66,7 +72,13 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     foreach($path in @($foreign,$corrupt,$otherInstall,$manual[0].FullName)){Assert (Test-Path -LiteralPath $path) 'Retention deleted unowned/corrupt/manual archive'}
     $status=Get-Content (Join-Path $DataRoot 'backup-status.json') -Raw | ConvertFrom-Json
     Assert ($status.result -eq 'succeeded' -and (Test-Path (Join-Path $folder $status.file))) 'Success status missing archive'
-    Assert ($env:PGDATABASE -ceq 'previous-environment') 'Database environment not restored after success'
+    foreach($key in $priorPg.Keys){Assert ([Environment]::GetEnvironmentVariable($key) -ceq $priorPg[$key]) "$key not restored after success"}
+    foreach($key in $priorPg.Keys){[Environment]::SetEnvironmentVariable($key,[NullString]::Value)}
+    $script:archiveFails=$true
+    Refuses {Invoke-ServerBackup $false} 'Expected failure with initially absent environment'
+    foreach($key in $priorPg.Keys){Assert ($null -eq [Environment]::GetEnvironmentVariable($key)) "$key absence was not restored after failure"}
+    foreach($key in $priorPg.Keys){[Environment]::SetEnvironmentVariable($key,$priorPg[$key])}
+    $script:archiveFails=$false
     $settings.enabled=$false; Write-BackupJson (Join-Path $DataRoot 'backup-schedule.json') $settings
     $before=@(Get-ChildItem -LiteralPath $folder).Count; Invoke-ServerBackup $true
     Assert (@(Get-ChildItem -LiteralPath $folder).Count -eq $before) 'Disabled queued invocation wrote backup'
@@ -206,7 +218,7 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     Assert (@(Get-ChildItem -LiteralPath $folder).Count -eq $before) 'Schedule operation modified backups'
     Write-Host 'PASS schedule time/retention, SYSTEM action without secrets, retry/catch-up, foreign-task refusal, disable and uninstall preserve archives.'
 } finally {
-    foreach($key in $envBefore.Keys){[Environment]::SetEnvironmentVariable($key,$envBefore[$key])}
+    foreach($key in $envBefore.Keys){if($null -eq $envBefore[$key]){[Environment]::SetEnvironmentVariable($key,[NullString]::Value)}else{[Environment]::SetEnvironmentVariable($key,$envBefore[$key])}}
     if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}
     Remove-Variable -Name sbcoTestTask -Scope Global -ErrorAction SilentlyContinue
 }

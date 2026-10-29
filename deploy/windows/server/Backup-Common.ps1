@@ -154,6 +154,25 @@ function Invoke-BackupArchive([string]$Partial) {
     if ($LASTEXITCODE -ne 0) { throw 'Backup archive validation failed.' }
     if (-not (Test-Path -LiteralPath $Partial) -or (Get-Item -LiteralPath $Partial).Length -eq 0) { throw 'Backup archive is empty.' }
 }
+function Set-BackupProcessEnvironment([hashtable]$Values) {
+    foreach ($key in $Values.Keys) {
+        # PowerShell coerces an untyped $null to an empty string for .NET calls;
+        # libpq treats an empty PGSERVICE as a service name, so remove it explicitly.
+        if ($null -eq $Values[$key]) { [Environment]::SetEnvironmentVariable($key, [NullString]::Value) }
+        else { [Environment]::SetEnvironmentVariable($key, [string]$Values[$key]) }
+    }
+}
+function Get-BackupConnectionEnvironment([uri]$Database) {
+    $credentials = $Database.UserInfo -split ':', 2
+    if ($credentials.Count -ne 2 -or -not $credentials[0] -or -not $credentials[1]) { throw 'Database credentials are missing from protected configuration.' }
+    # libpq does not expand a URI supplied only through PGDATABASE. Use separate
+    # environment fields so passwords never appear in argv or Task Scheduler settings.
+    return @{
+        PGHOST=$Database.Host; PGHOSTADDR=$Database.Host; PGPORT=$Database.Port.ToString([Globalization.CultureInfo]::InvariantCulture)
+        PGUSER=[uri]::UnescapeDataString($credentials[0]); PGPASSWORD=[uri]::UnescapeDataString($credentials[1])
+        PGDATABASE=[uri]::UnescapeDataString($Database.AbsolutePath.TrimStart('/')); PGSERVICE=$null
+    }
+}
 function Invoke-ServerBackup([bool]$Scheduled) {
     $owned = Assert-BackupInstallation
     $settings = Read-BackupSchedule
@@ -163,7 +182,9 @@ function Invoke-ServerBackup([bool]$Scheduled) {
     $mode = if ($Scheduled) { 'scheduled' } else { 'manual' }
     $prefix = if ($Scheduled) { 'auto-' } else { 'sbco-' }
     $path = Join-Path $folder ($prefix + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N') + '.dump')
-    $partial = "$path.partial"; $previousDatabase = $env:PGDATABASE
+    $partial = "$path.partial"
+    $previousEnvironment = @{}
+    foreach ($key in @('PGHOST','PGHOSTADDR','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSERVICE')) { $previousEnvironment[$key] = [Environment]::GetEnvironmentVariable($key) }
     $status = @{format=1; mode=$mode; started_at=[DateTime]::UtcNow.ToString('o'); result='running'}
     $statusPath = Join-Path $DataRoot 'backup-status.json'
     try {
@@ -173,7 +194,8 @@ function Invoke-ServerBackup([bool]$Scheduled) {
         if ($connection.Count -ne 1) { throw 'Database configuration is unavailable.' }
         $database = [uri]$connection[0].value
         if ($database.Scheme -ne 'postgresql' -or $database.Host -ne '127.0.0.1' -or $database.Port -ne 55439 -or $database.AbsolutePath -ne '/sbco' -or $database.Query -or $database.Fragment) { throw 'Backup requires the owned local server database.' }
-        $env:PGDATABASE = $connection[0].value
+        $databaseEnvironment = Get-BackupConnectionEnvironment $database
+        Set-BackupProcessEnvironment $databaseEnvironment
         Invoke-BackupArchive $partial
         $hash = (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash.ToLowerInvariant()
         [IO.File]::Move($partial, $path)
@@ -190,7 +212,7 @@ function Invoke-ServerBackup([bool]$Scheduled) {
         Write-BackupJson $statusPath $status
         throw 'SBCO backup failed. Existing backups were preserved unless retention followed a successful new archive. Check available disk space, database service and protected configuration; then retry.'
     } finally {
-        $env:PGDATABASE=$previousDatabase
+        Set-BackupProcessEnvironment $previousEnvironment
         if (Test-Path -LiteralPath $partial) { Remove-Item -LiteralPath $partial -Force }
     }
 }
