@@ -171,13 +171,28 @@ function Remember-GuiProcesses {
     }
     foreach ($process in $owned) { $knownProcesses[[string]$process.ProcessId]=[pscustomobject]@{pid=$process.ProcessId;created=$process.CreationDate;path=$process.ExecutablePath} }
 }
+function Get-GuiOwnedProcess($Owned) {
+    try { $process=[Diagnostics.Process]::GetProcessById([int]$Owned.pid) }
+    catch [ArgumentException] { return $null } # The exact child already exited.
+    try {
+        $null=$process.Handle # Pin this instance before checking the current PID.
+        $current=Get-CimInstance Win32_Process -Filter "ProcessId=$($Owned.pid)"
+        if (-not $current -or $current.CreationDate -ne $Owned.created -or $current.ExecutablePath -ine $Owned.path -or $process.HasExited) { $process.Dispose();return $null }
+        return $process
+    } catch {
+        $exited=$process.HasExited;$process.Dispose()
+        if (-not $exited) { throw }
+        return $null
+    }
+}
 function Stop-GuiProcesses {
     Remember-GuiProcesses
     foreach ($owned in @($knownProcesses.Values | Where-Object { $_.path -ieq $application })) {
-        $current=Get-CimInstance Win32_Process -Filter "ProcessId=$($owned.pid)"
-        if ($current -and $current.CreationDate -eq $owned.created -and $current.ExecutablePath -ieq $owned.path) {
-            $process=Get-Process -Id $owned.pid
-            $null=$process.CloseMainWindow();$null=$process.WaitForExit(15000)
+        $process=Get-GuiOwnedProcess $owned
+        if ($process) {
+            try { if (-not $process.HasExited) { $null=$process.CloseMainWindow();$null=$process.WaitForExit(15000) } }
+            catch { if (-not $process.HasExited) { throw } }
+            finally { $process.Dispose() }
         }
     }
     # pg_ctl targets only the fresh token-owned cluster. Failure keeps all data for inspection.
@@ -190,8 +205,12 @@ function Stop-GuiProcesses {
         }
     }
     foreach ($owned in @($knownProcesses.Values)) {
-        $current=Get-CimInstance Win32_Process -Filter "ProcessId=$($owned.pid)"
-        if ($current -and $current.CreationDate -eq $owned.created -and $current.ExecutablePath -ieq $owned.path) { Stop-Process -Id $owned.pid -Force }
+        $process=Get-GuiOwnedProcess $owned
+        if ($process) {
+            try { if (-not $process.HasExited) { $process.Kill();if (-not $process.WaitForExit(10000)) { throw 'Exact owned fixture process did not stop; preserve data and policy journal.' } } }
+            catch { if (-not $process.HasExited) { throw } }
+            finally { $process.Dispose() }
+        }
     }
     if ($application -and (Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $application })) { throw 'Fixture application remains running.' }
 }

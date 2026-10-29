@@ -163,12 +163,15 @@ def run(config, phase):
         if observed_version.split(".")[:3] != config["runtime_version"].split(".")[:3]:
             raise GuiFailure("Session WebView2 version differs from the verified runtime/driver")
         call("/session/" + session + "/timeouts", {"implicit": 5000, "script": 30000})
+        stage = "native application document readiness"
+        # WebView2 exposes its debug endpoint before Tauri finishes initdb and
+        # migrations. Wait for the real application document, not about:blank.
+        wait(lambda: execute("return document.readyState === 'complete' && !!window.__TAURI_INTERNALS__"),
+             "native Tauri application document", timeout=120)
         execute("""window.guiErrors=[];
         addEventListener('error',e=>window.guiErrors.push(String(e.message)));
         addEventListener('unhandledrejection',e=>window.guiErrors.push(String(e.reason)));
         const previous=console.error;console.error=function(...args){window.guiErrors.push(args.map(String).join(' '));previous.apply(console,args)};""")
-        if not execute("return !!window.__TAURI_INTERNALS__"):
-            raise GuiFailure("Installed window is missing native Tauri IPC")
         if phase == "setup":
             stage = "visible first-run welcome"
             wait(lambda: text_present("Set up this offline workspace"), stage)
@@ -213,7 +216,7 @@ def run(config, phase):
         (evidence / (phase + "-result.json")).write_text(json.dumps({
             "result": "passed", "phase": phase, "native_ipc": True, "visible_sign_in": True,
             "overview": True, "help_search": True, "runtime_version": observed_version,
-            "account_persisted_after_restart": phase == "reopen", "console_error_capture": "after WebDriver attachment",
+            "account_persisted_after_restart": phase == "reopen", "console_error_capture": "after WebDriver attachment and native document readiness",
             "native_dialogs_tested": False, "windows_10_11_qualified": False, "ordinary_user_qualified": False,
         }, indent=2), encoding="utf-8")
         print("PASS installed standalone GUI " + phase + ": visible sign-in, Overview, Help and screenshots", flush=True)

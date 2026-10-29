@@ -8,7 +8,7 @@ $source=Join-Path $PSScriptRoot 'test-windows-standalone-gui.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw ($errors|Out-String) }
-foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity','ConvertFrom-EdgeDriverVersion','Protect-GuiStartupText','Test-GuiDescendantIdentity','Read-GuiLiveText','Test-GuiPolicyValueOwned')) {
+foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity','ConvertFrom-EdgeDriverVersion','Protect-GuiStartupText','Test-GuiDescendantIdentity','Read-GuiLiveText','Test-GuiPolicyValueOwned','Get-GuiOwnedProcess')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     Assert ($null -ne $definition) "Missing helper $name"
     Invoke-Expression $definition.Extent.Text
@@ -48,6 +48,24 @@ Assert (-not (Test-GuiDescendantIdentity $child $parent @($parent,$child,$foreig
 $child.ParentProcessId=100;$child.CreationDate=[DateTime]'2026-10-29T10:00:05Z'
 Assert (-not (Test-GuiDescendantIdentity $child $parent @($parent,$child))) 'Reused application PID accepted as listener ancestor.'
 Write-Host 'PASS exact parent-instance ancestry, including stale PID reuse and unknown creation time refusal.'
+# Pin a real benign process handle, while mocking only CIM's identity snapshot.
+# No process is terminated in this test.
+$self=[Diagnostics.Process]::GetCurrentProcess()
+$fixtureIdentity=[pscustomobject]@{ProcessId=$self.Id;CreationDate=$self.StartTime;ExecutablePath=$self.MainModule.FileName}
+function Get-CimInstance { param($ClassName,$Filter) return $fixtureIdentity }
+try {
+    $owned=[pscustomobject]@{pid=$self.Id;created=$fixtureIdentity.CreationDate;path=$fixtureIdentity.ExecutablePath}
+    $pinned=Get-GuiOwnedProcess $owned
+    Assert ($null -ne $pinned -and $pinned.Handle -ne [IntPtr]::Zero) 'Exact live process was not pinned.'
+    $pinned.Dispose()
+    $owned.created=$owned.created.AddSeconds(-1)
+    Assert ($null -eq (Get-GuiOwnedProcess $owned)) 'Stale process creation identity was accepted.'
+    $owned.created=$fixtureIdentity.CreationDate;$owned.path='foreign-application.exe'
+    Assert ($null -eq (Get-GuiOwnedProcess $owned)) 'Foreign executable identity was accepted.'
+    $owned.path=$fixtureIdentity.ExecutablePath;$fixtureIdentity=$null
+    Assert ($null -eq (Get-GuiOwnedProcess $owned)) 'Disappeared CIM process was accepted.'
+} finally { Remove-Item Function:Get-CimInstance;$self.Dispose() }
+Write-Host 'PASS pinned real process handle with stale/foreign/disappeared identity refusal; no termination.'
 $fixture=Join-Path ([IO.Path]::GetTempPath()) ('sbco-gui-guards-'+[guid]::NewGuid().ToString('N'))
 try {
     [IO.Directory]::CreateDirectory($fixture)|Out-Null
