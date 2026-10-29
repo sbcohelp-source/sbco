@@ -127,6 +127,11 @@ function Stop-GuiProcesses {
     }
     if ($application -and (Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $application })) { throw 'Fixture application remains running.' }
 }
+function ConvertFrom-EdgeDriverVersion([string]$Output,[int]$ExitCode) {
+    # Public --version format verified against Microsoft's distributed driver.
+    if ($ExitCode -ne 0 -or $Output.Trim() -notmatch '^Microsoft Edge WebDriver (\d+\.\d+\.\d+\.\d+)(?: \([a-f0-9]+\))?$') { throw 'Edge driver version could not be verified.' }
+    return $Matches[1]
+}
 function Get-EdgeDriverVersion([string]$Path) {
     $signature=Get-AuthenticodeSignature -LiteralPath $Path
     if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)O=Microsoft Corporation(?:,|$)') { throw 'Edge driver must have a valid Microsoft signature.' }
@@ -138,8 +143,11 @@ function Get-EdgeDriverVersion([string]$Path) {
         $null=$process.Start()
         $output=$process.StandardOutput.ReadToEndAsync();$errorOutput=$process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit(10000)) { $process.Kill();throw 'Edge driver version probe timed out.' }
-        if ($process.ExitCode -ne 0 -or $output.Result -notmatch 'MSEdgeDriver\s+(\d+\.\d+\.\d+\.\d+)') { throw 'Edge driver version could not be verified.' }
-        return $Matches[1]
+        $stdout=$output.GetAwaiter().GetResult().Trim();$stderr=$errorOutput.GetAwaiter().GetResult().Trim()
+        # This process ran only --version before app/credentials exist. Never log
+        # output from the later WebDriver session (which handles password fields).
+        @{exit_code=$process.ExitCode;stdout=$stdout.Substring(0,[Math]::Min(512,$stdout.Length));stderr=$stderr.Substring(0,[Math]::Min(512,$stderr.Length))} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory ('driver-version-'+[guid]::NewGuid().ToString('N')+'.json'))
+        return ConvertFrom-EdgeDriverVersion $stdout $process.ExitCode
     } finally { $process.Dispose() }
 }
 function Get-MatchingEdgeDriver {

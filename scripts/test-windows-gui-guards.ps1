@@ -8,11 +8,19 @@ $source=Join-Path $PSScriptRoot 'test-windows-standalone-gui.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw ($errors|Out-String) }
-foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity')) {
+foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity','ConvertFrom-EdgeDriverVersion')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     Assert ($null -ne $definition) "Missing helper $name"
     Invoke-Expression $definition.Extent.Text
 }
+# Captured from the official 155.0.4283.62 Linux driver --version (no browser launch).
+$publicVersion='Microsoft Edge WebDriver 155.0.4283.62 (aa3a7406ba8c53a83536df539f07124d73c899bd)'
+Assert ((ConvertFrom-EdgeDriverVersion ($publicVersion+"`r`n") 0) -ceq '155.0.4283.62') 'Official Edge driver branding/version was rejected.'
+Refuses { ConvertFrom-EdgeDriverVersion $publicVersion 1 } 'Failed version process accepted.'
+Refuses { ConvertFrom-EdgeDriverVersion 'ChromeDriver 155.0.4283.62' 0 } 'Different driver brand accepted.'
+Refuses { ConvertFrom-EdgeDriverVersion '' 0 } 'Empty version output accepted.'
+Refuses { ConvertFrom-EdgeDriverVersion 'Microsoft Edge WebDriver 155.0.4283' 0 } 'Incomplete version accepted.'
+Write-Host 'PASS official Edge driver version branding, exit-code, malformed/foreign-output checks.'
 $parent=[pscustomobject]@{ProcessId=100;CreationDate=[DateTime]'2026-10-29T10:00:10Z';ExecutablePath='owned.exe'}
 $child=[pscustomobject]@{ProcessId=200;ParentProcessId=100;CreationDate=[DateTime]'2026-10-29T10:00:11Z';ExecutablePath='child.exe'}
 Assert (Test-GuiChildIdentity $child $parent) 'Actual newer child was rejected.'
