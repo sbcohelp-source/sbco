@@ -78,9 +78,11 @@ function Restore-OwnedBackupScheduleAfterRollback {
         $task.Actions.ChildNodes.Count -ne 1 -or $actions.Count -ne 1 -or $principals.Count -ne 1 -or
         $actions[0].Command -ine (Get-BackupTaskExecutable) -or $actions[0].Arguments -cne (Get-BackupTaskArguments) -or
         $actions[0].WorkingDirectory -ine $InstallRoot -or $principals[0].UserId -notin @('SYSTEM','NT AUTHORITY\SYSTEM','S-1-5-18') -or
-        $principals[0].LogonType -ne 'ServiceAccount') {
+        $principals[0].SelectNodes("*[local-name()='LogonType']").Count -ne 0) {
         throw 'Backup rollback task does not match this installation; no task was registered.'
     }
+    # SYSTEM task XML omits LogonType; ServiceAccount is a CIM enum, not an XML value.
+    # Get-OwnedBackupTask below verifies the registered CIM principal after restoration.
     $task.Settings.Enabled = $journal.enabled.ToString().ToLowerInvariant()
     # Preserve the recorded preference AND actual task Enabled state, even if an operator
     # disabled the task directly in Task Scheduler before uninstall began.

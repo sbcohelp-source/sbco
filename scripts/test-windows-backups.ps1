@@ -108,7 +108,7 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
             $global:sbcoTestTask=[pscustomobject]@{
                 Description=[string]$task.RegistrationInfo.Description
                 Actions=@([pscustomobject]@{Execute=[string]$task.Actions.Exec.Command;Arguments=[string]$task.Actions.Exec.Arguments;WorkingDirectory=[string]$task.Actions.Exec.WorkingDirectory})
-                Principal=[pscustomobject]@{UserId=[string]$task.Principals.Principal.UserId;LogonType=[string]$task.Principals.Principal.LogonType}
+                Principal=[pscustomobject]@{UserId=[string]$task.Principals.Principal.UserId;LogonType='ServiceAccount'}
                 Settings=[pscustomobject]@{Enabled=([string]$task.Settings.Enabled -eq 'true')}
                 State=$(if([string]$task.Settings.Enabled -eq 'true'){'Ready'}else{'Disabled'})
             }
@@ -122,7 +122,7 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
         $arguments=[Security.SecurityElement]::Escape($task.Actions[0].Arguments)
         $directory=[Security.SecurityElement]::Escape($task.Actions[0].WorkingDirectory)
         $enabled=$task.Settings.Enabled.ToString().ToLowerInvariant()
-        "<Task><RegistrationInfo><Description>$description</Description></RegistrationInfo><Principals><Principal><UserId>S-1-5-18</UserId><LogonType>ServiceAccount</LogonType></Principal></Principals><Settings><Enabled>$enabled</Enabled></Settings><Actions><Exec><Command>$executable</Command><Arguments>$arguments</Arguments><WorkingDirectory>$directory</WorkingDirectory></Exec></Actions></Task>"
+        "<Task xmlns='http://schemas.microsoft.com/windows/2004/02/mit/task'><RegistrationInfo><Description>$description</Description></RegistrationInfo><Principals><Principal><UserId>S-1-5-18</UserId></Principal></Principals><Settings><Enabled>$enabled</Enabled></Settings><Actions><Exec><Command>$executable</Command><Arguments>$arguments</Arguments><WorkingDirectory>$directory</WorkingDirectory></Exec></Actions></Task>"
     }
     function Enable-ScheduledTask { param($TaskName,$TaskPath); $global:sbcoTestTask.State='Ready'; $global:sbcoTestTask.Settings.Enabled=$true }
     function Disable-ScheduledTask { param($TaskName,$TaskPath); $global:sbcoTestTask.State='Disabled'; $global:sbcoTestTask.Settings.Enabled=$false }
@@ -151,6 +151,15 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     Assert ($null -eq $global:sbcoTestTask) 'Owned task remained after removal'
     $journalPath=Join-Path $DataRoot 'backup-removal.json'
     Assert (Test-Path -LiteralPath $journalPath) 'Removal journal missing'
+    $validJournal=Read-BackupScheduleRemovalJournal
+    $validXml=$validJournal.task_xml
+    foreach($invalidLogon in @('Password','S4U','InteractiveToken','ServiceAccount')) {
+        $validJournal.task_xml=$validXml.Replace('</UserId>', '</UserId><LogonType>'+ $invalidLogon +'</LogonType>')
+        Write-BackupJson $journalPath $validJournal
+        Refuses {Restore-OwnedBackupScheduleAfterRollback} "Explicit incompatible XML logon accepted: $invalidLogon"
+        Assert ($null -eq $global:sbcoTestTask -and (Test-Path -LiteralPath $journalPath)) 'Rejected XML registered a task or discarded journal'
+    }
+    $validJournal.task_xml=$validXml; Write-BackupJson $journalPath $validJournal
     Restore-OwnedBackupScheduleAfterRollback
     Assert ($global:sbcoTestTask.State -eq 'Disabled' -and -not (Read-BackupSchedule).enabled) 'Rollback enabled a disabled schedule'
     Assert (-not (Test-Path -LiteralPath $journalPath)) 'Successful rollback left journal'
@@ -183,7 +192,7 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     Remove-OwnedBackupSchedule
     & $control -Action Enable -Time '04:30' -Retention 3 | Out-Null
     Assert (-not (Test-Path -LiteralPath $journalPath)) 'Explicit Enable left stale journal'
-    Write-Host 'PASS enabled/disabled rollback, actual-state preservation, foreign-task refusal, ordinary resume and operator stale-journal invalidation.'
+    Write-Host 'PASS omitted SYSTEM XML logon, explicit incompatible logon rejection, enabled/disabled rollback, actual-state preservation, foreign-task refusal, ordinary resume and operator stale-journal invalidation.'
     Assert (@(Get-ChildItem -LiteralPath $folder).Count -eq $before) 'Schedule operation modified backups'
     Write-Host 'PASS schedule time/retention, SYSTEM action without secrets, retry/catch-up, foreign-task refusal, disable and uninstall preserve archives.'
 } finally {
