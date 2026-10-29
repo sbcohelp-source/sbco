@@ -100,7 +100,7 @@ Write-Host 'PASS actual wrapper answers inherited by child setup script; secure 
  $call=$ast.Find({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Call-Server'},$true)
  Invoke-Expression $call.Extent.Text
  $poll=$ast.Find({param($node)$node -is [Management.Automation.Language.ScriptBlockExpressionAst] -and $node.Extent.Text.StartsWith('{$script:batch=')},$true).ScriptBlock.GetScriptBlock()
- $script:session=$null
+ $script:session=[Microsoft.PowerShell.Commands.WebRequestSession]::new()
  $import=[pscustomobject]@{id='fixture-import'}
  $script:fixtureImportStatus='Queued'
  function Invoke-RestMethod {
@@ -121,6 +121,17 @@ Write-Host 'PASS actual wrapper answers inherited by child setup script; secure 
   try{Call-Server 'query' @{kind='report';password='fixture-request-secret'};throw 'Expected HTTP refusal.'}catch{
    if($_.Exception.Message -cne 'HTTPS application check failed: query kind=report HTTP=403'){throw 'HTTP diagnostic must contain only path/kind/status and no bodies.'}
   }
-  Write-Host 'PASS HTTP failure diagnostics retain status and kind without request/response secrets.' 
+  Write-Host 'PASS HTTP failure diagnostics retain status and kind without request/response secrets.'
+  function Invoke-RestMethod {
+   param($WebSession,$Headers)
+   foreach($key in $Headers.Keys){$WebSession.Headers[$key]=$Headers[$key]}
+   if($WebSession.Headers.ContainsKey('X-SBCO-Training')){return 'training'}
+   return 'live'
+  }
+  if((Call-Server 'me' $null @{'X-SBCO-Training'='fixture-generation'}) -cne 'training'){throw 'Training request lost explicit context.'}
+  if((Call-Server 'training/reset' @{generation='fixture-generation';confirmation='DELETE TRAINING'}) -cne 'live'){throw 'Reset leaked previous training context.'}
+  if((Call-Server 'query' @{kind='report'}) -cne 'live'){throw 'Live query retained stale training context.'}
+  Write-Host 'PASS training/reset/live transitions clear persisted context while retaining the session.'
+
  } finally { Remove-Variable fixtureImportStatus,batch -Scope Script -ErrorAction SilentlyContinue }
 }

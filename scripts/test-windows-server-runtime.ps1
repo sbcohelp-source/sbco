@@ -42,6 +42,9 @@ function Invoke-PrivatePowerShell([string]$Script,[string]$Label,[int]$Seconds=6
     } finally{$process.Dispose()}
 }
 function Call-Server([string]$Path,$Body=$null,[hashtable]$ExtraHeaders=@{}) {
+    # PowerShell persists explicit request headers in WebRequestSession. A live
+    # request must not reuse a previous training generation after its reset.
+    $null=$script:session.Headers.Remove('X-SBCO-Training')
     $headers=@{'X-SBCO-Request'='1'};foreach($key in $ExtraHeaders.Keys){$headers[$key]=$ExtraHeaders[$key]}
     $options=@{Uri="https://localhost/api/v1/$Path";WebSession=$script:session;Headers=$headers;TimeoutSec=90;ErrorAction='Stop'}
     if($null -ne $Body){$options.Method='Post';$options.ContentType='application/json';$options.Body=($Body|ConvertTo-Json -Depth 15 -Compress)}
