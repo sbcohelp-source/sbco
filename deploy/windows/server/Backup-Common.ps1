@@ -83,7 +83,19 @@ function Restore-OwnedBackupScheduleAfterRollback {
     }
     # SYSTEM task XML omits LogonType; ServiceAccount is a CIM enum, not an XML value.
     # Get-OwnedBackupTask below verifies the registered CIM principal after restoration.
-    $task.Settings.Enabled = $journal.enabled.ToString().ToLowerInvariant()
+    # Windows exports omit default-true Enabled (and may omit default Settings).
+    # Create missing elements in the task namespace instead of assigning an absent XML property.
+    $taskSettings = $task.SelectSingleNode("*[local-name()='Settings']")
+    if ($null -eq $taskSettings) {
+        $taskSettings = $definition.CreateElement('Settings', $task.NamespaceURI)
+        $null = $task.AppendChild($taskSettings)
+    }
+    $enabledElement = $taskSettings.SelectSingleNode("*[local-name()='Enabled']")
+    if ($null -eq $enabledElement) {
+        $enabledElement = $definition.CreateElement('Enabled', $task.NamespaceURI)
+        $null = $taskSettings.AppendChild($enabledElement)
+    }
+    $enabledElement.InnerText = $journal.enabled.ToString().ToLowerInvariant()
     # Preserve the recorded preference AND actual task Enabled state, even if an operator
     # disabled the task directly in Task Scheduler before uninstall began.
     Write-BackupJson (Join-Path $DataRoot 'backup-schedule.json') $settings

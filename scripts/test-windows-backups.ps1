@@ -105,12 +105,14 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
         param($TaskName,$TaskPath,$InputObject,$Xml,[switch]$Force)
         if($Xml) {
             [xml]$definition=$Xml; $task=$definition.Task
+            $enabledNode=$task.SelectSingleNode("*[local-name()='Settings']/*[local-name()='Enabled']")
+            $isEnabled=$null -eq $enabledNode -or $enabledNode.InnerText -eq 'true'
             $global:sbcoTestTask=[pscustomobject]@{
                 Description=[string]$task.RegistrationInfo.Description
                 Actions=@([pscustomobject]@{Execute=[string]$task.Actions.Exec.Command;Arguments=[string]$task.Actions.Exec.Arguments;WorkingDirectory=[string]$task.Actions.Exec.WorkingDirectory})
                 Principal=[pscustomobject]@{UserId=[string]$task.Principals.Principal.UserId;LogonType='ServiceAccount'}
-                Settings=[pscustomobject]@{Enabled=([string]$task.Settings.Enabled -eq 'true')}
-                State=$(if([string]$task.Settings.Enabled -eq 'true'){'Ready'}else{'Disabled'})
+                Settings=[pscustomobject]@{Enabled=$isEnabled}
+                State=$(if($isEnabled){'Ready'}else{'Disabled'})
             }
         } else { $global:sbcoTestTask=$InputObject }
     }
@@ -121,8 +123,8 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
         $executable=[Security.SecurityElement]::Escape($task.Actions[0].Execute)
         $arguments=[Security.SecurityElement]::Escape($task.Actions[0].Arguments)
         $directory=[Security.SecurityElement]::Escape($task.Actions[0].WorkingDirectory)
-        $enabled=$task.Settings.Enabled.ToString().ToLowerInvariant()
-        "<Task xmlns='http://schemas.microsoft.com/windows/2004/02/mit/task'><RegistrationInfo><Description>$description</Description></RegistrationInfo><Principals><Principal><UserId>S-1-5-18</UserId></Principal></Principals><Settings><Enabled>$enabled</Enabled></Settings><Actions><Exec><Command>$executable</Command><Arguments>$arguments</Arguments><WorkingDirectory>$directory</WorkingDirectory></Exec></Actions></Task>"
+        $enabled=if($task.Settings.Enabled){''}else{'<Enabled>false</Enabled>'}
+        "<Task xmlns='http://schemas.microsoft.com/windows/2004/02/mit/task'><RegistrationInfo><Description>$description</Description></RegistrationInfo><Principals><Principal><UserId>S-1-5-18</UserId></Principal></Principals><Settings>$enabled</Settings><Actions><Exec><Command>$executable</Command><Arguments>$arguments</Arguments><WorkingDirectory>$directory</WorkingDirectory></Exec></Actions></Task>"
     }
     function Enable-ScheduledTask { param($TaskName,$TaskPath); $global:sbcoTestTask.State='Ready'; $global:sbcoTestTask.Settings.Enabled=$true }
     function Disable-ScheduledTask { param($TaskName,$TaskPath); $global:sbcoTestTask.State='Disabled'; $global:sbcoTestTask.Settings.Enabled=$false }
@@ -166,6 +168,8 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     & $control -Action Enable -Time '04:30' -Retention 3 | Out-Null
     $ownedTask=$global:sbcoTestTask
     Remove-OwnedBackupSchedule
+    $defaultJournal=Read-BackupScheduleRemovalJournal
+    Assert ($defaultJournal.task_xml -notmatch '<Enabled>') 'Enabled-default fixture did not reproduce Windows export omission'
     $global:sbcoTestTask=$ownedTask; $global:sbcoTestTask.Description='Foreign replacement'
     Refuses {Restore-OwnedBackupScheduleAfterRollback} 'Rollback replaced foreign task'
     Assert (Test-Path -LiteralPath $journalPath) 'Refused rollback discarded recovery journal'
@@ -173,6 +177,12 @@ function Set-PrivateDirectory([string]$Path) { [IO.Directory]::CreateDirectory($
     Restore-OwnedBackupScheduleAfterRollback
     $restoredSettings=Read-BackupSchedule
     Assert ($global:sbcoTestTask.State -eq 'Ready' -and $restoredSettings.enabled -and $restoredSettings.time -eq '04:30' -and $restoredSettings.retention -eq 3) 'Enabled rollback lost state/preferences'
+    Remove-OwnedBackupSchedule
+    $defaultJournal=Read-BackupScheduleRemovalJournal
+    $defaultJournal.task_xml=$defaultJournal.task_xml.Replace('<Settings></Settings>','')
+    Write-BackupJson $journalPath $defaultJournal
+    Restore-OwnedBackupScheduleAfterRollback
+    Assert ($global:sbcoTestTask.State -eq 'Ready') 'Default Settings omission was not restored'
     # Actual task disabled outside the operator script, preference still enabled.
     Disable-ScheduledTask
     Remove-OwnedBackupSchedule
