@@ -25,14 +25,14 @@ $fixtureCreated = $false
 function Read-MsiRows($Database, [string]$Sql, [int]$Columns) {
     $view = $Database.OpenView($Sql)
     try {
-        $view.Execute()
+        $null = $view.Execute()
         while ($null -ne ($record = $view.Fetch())) {
             try {
                 $values = @(); for ($index = 1; $index -le $Columns; $index++) { $values += $record.StringData($index) }
                 Write-Output -NoEnumerate $values
             } finally { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) | Out-Null }
         }
-    } finally { $view.Close(); [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) | Out-Null }
+    } finally { $null = $view.Close(); [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) | Out-Null }
 }
 function Invoke-Msi([string]$Operation, [string]$Target, [string]$Label) {
     $log = Join-Path $LogDirectory "$Label.log"
