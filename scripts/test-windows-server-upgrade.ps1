@@ -1,5 +1,13 @@
 # Helpers loaded only by the guarded disposable Windows server-runtime harness.
 Set-StrictMode -Version Latest
+function Read-ConfiguredState([string]$Path) {
+    # Resume rewrites ready with Add-Member -Force, moving that JSON property.
+    # Preserve every field/value while ignoring only object-key order/spacing.
+    $value=Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -AsHashtable
+    if($value -isnot [Collections.IDictionary]){throw 'Configured state must be a JSON object.'}
+    $ordered=[ordered]@{};foreach($key in @($value.Keys|Sort-Object)){$ordered[$key]=$value[$key]}
+    return ($ordered|ConvertTo-Json -Depth 20 -Compress)
+}
 function Assert-UpgradeIdentity($OldCode,$NewCode,$OldVersion,$NewVersion,$UpgradeCode) {
     if([guid]$OldCode -eq [guid]$NewCode -or $OldVersion -cne $NewVersion -or [guid]$UpgradeCode -ne [guid]'126a311d-74cf-4427-9422-12b3182ea43e'){
         throw 'Upgrade fixture requires distinct product codes, equal versions and the SBCO Server upgrade identity.'
@@ -50,10 +58,11 @@ function Invoke-ServerUpgradeFixture($Package) {
     $beforeRows=(Call-Server 'query' @{kind='transactions';filter=$filter;cursor=$null;limit=50})|ConvertTo-Json -Depth 20 -Compress
     $configurationFiles=@('ownership.json','configured.json','tls\certificate.pem','tls\private-key.pem','tls\Caddyfile')
     foreach($service in $serviceNames){$configurationFiles+="services\$service\$service.xml"}
+    $configuredState=Read-ConfiguredState (Join-Path $dataPath 'configured.json')
     $preserved=@{};foreach($relative in $configurationFiles){
         $path=Join-Path $dataPath $relative
         if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw 'Expected protected server configuration is missing.'}
-        $preserved[$relative]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+        if($relative -cne 'configured.json'){$preserved[$relative]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
     }
     $backupDirectory=Join-Path $dataPath 'backups';[IO.Directory]::CreateDirectory($backupDirectory)|Out-Null
     $archive=Join-Path $backupDirectory 'sbco-before-upgrade.dump';New-PreUpgradeArchive $archive
@@ -79,7 +88,8 @@ function Invoke-ServerUpgradeFixture($Package) {
     $afterActor=Call-Server 'me'
     if($afterActor.id -cne $beforeActor.id -or $afterActor.name -cne $beforeActor.name -or $afterActor.role -cne $beforeActor.role){throw 'Upgrade changed account/session identity.'}
     if(((Call-Server 'query' @{kind='transactions';filter=$filter;cursor=$null;limit=50})|ConvertTo-Json -Depth 20 -Compress) -cne $beforeRows){throw 'Upgrade changed fixture transaction records.'}
-    foreach($relative in $preserved.Keys){if((Get-FileHash -LiteralPath (Join-Path $dataPath $relative) -Algorithm SHA256).Hash -cne $preserved[$relative]){throw 'Upgrade changed protected existing configuration.'}}
+    if((Read-ConfiguredState (Join-Path $dataPath 'configured.json')) -cne $configuredState){throw 'Upgrade changed configured.json field values.'}
+    foreach($relative in $preserved.Keys){if((Get-FileHash -LiteralPath (Join-Path $dataPath $relative) -Algorithm SHA256).Hash -cne $preserved[$relative]){throw "Upgrade changed protected configuration bytes: $relative"}}
     . (Join-Path $installPath 'server\Backup-Common.ps1')
     $task=Get-OwnedBackupTask;$settings=Read-BackupSchedule
     if($null -eq $task -or $task.State -eq 'Disabled' -or -not $settings.enabled -or $settings.time -cne $scheduleTime -or $settings.retention -ne 3 -or (Export-ScheduledTask -TaskName $BackupTaskName -TaskPath '\') -cne $taskXml -or (Get-FileHash -LiteralPath (Join-Path $dataPath 'backup-schedule.json') -Algorithm SHA256).Hash -cne $scheduleHash){throw 'Upgrade changed the owned backup task or preferences.'}

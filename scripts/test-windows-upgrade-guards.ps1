@@ -18,3 +18,24 @@ foreach($file in @('test-windows-server-upgrade.ps1','test-windows-server-runtim
     if($errors.Count){throw ($errors|Out-String)}
 }
 Write-Host 'PASS upgrade identity refusal cases, same-version transaction and service-preservation guards; both runtime scripts parse.'
+
+$fixture=Join-Path ([IO.Path]::GetTempPath()) ('sbco-upgrade-json-'+[guid]::NewGuid().ToString('N')+'.json')
+try {
+    $before='{"ready":true,"hostname":"localhost","configured_at":"2026-10-29T12:00:00.1234567Z","firewall":false}'
+    [IO.File]::WriteAllText($fixture,$before)
+    $snapshot=Read-ConfiguredState $fixture
+    $rewritten=$before|ConvertFrom-Json
+    $rewritten|Add-Member -NotePropertyName ready -NotePropertyValue $true -Force
+    [IO.File]::WriteAllText($fixture,($rewritten|ConvertTo-Json))
+    if((Read-ConfiguredState $fixture) -cne $snapshot){throw 'Normal Resume JSON property reordering was treated as data loss.'}
+    foreach($key in @('hostname','ready','configured_at','firewall')){
+        $modified=$before|ConvertFrom-Json
+        $modified.$key=if($key -in @('ready','firewall')){-not $modified.$key}else{'changed-fixture-value'}
+        [IO.File]::WriteAllText($fixture,($modified|ConvertTo-Json))
+        if((Read-ConfiguredState $fixture) -ceq $snapshot){throw "Changed configured state field escaped detection: $key"}
+    }
+    $modified=$before|ConvertFrom-Json;$modified|Add-Member -NotePropertyName extra -NotePropertyValue 'new'
+    [IO.File]::WriteAllText($fixture,($modified|ConvertTo-Json))
+    if((Read-ConfiguredState $fixture) -ceq $snapshot){throw 'Added configured state field escaped detection.'}
+    Write-Host 'PASS actual Resume property reorder preserves JSON values; changed/added fields are rejected.'
+}finally{if(Test-Path -LiteralPath $fixture){Remove-Item -LiteralPath $fixture}}
