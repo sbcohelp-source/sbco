@@ -1,0 +1,58 @@
+name: Qualify installed Windows standalone interface
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful standalone windows-msi.yml build run ID from this repository
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  standalone-gui:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source build provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          if ($env:SOURCE_RUN_ID -notmatch '^[0-9]{1,20}$') { throw 'Enter a numeric Actions run ID.' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:SOURCE_RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read source run.' }
+          if ($run.repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.path -ne '.github/workflows/windows-msi.yml' -or $run.event -ne 'workflow_dispatch' -or $run.conclusion -ne 'success') { throw 'Source must be a successful manual installer build from this repository.' }
+          New-Item -ItemType Directory -Path artifacts/windows-standalone-gui-logs -Force | Out-Null
+          $run | Select-Object id,head_sha,html_url,path,conclusion | ConvertTo-Json | Set-Content artifacts/windows-standalone-gui-logs/source-run.json
+      - name: Download standalone installer
+        uses: actions/download-artifact@v4
+        with:
+          name: sbco-windows-x64-msi-unsigned
+          path: artifacts/windows-standalone-gui-input
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Verify GUI fixture safeguards
+        run: |
+          ./scripts/test-windows-gui-guards.ps1
+          python tests/windows_standalone_gui.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'GUI harness self-test failed.' }
+      - name: Exercise the installed standalone interface and restart
+        run: |
+          ./scripts/test-windows-standalone-gui.ps1 -ArtifactDirectory artifacts/windows-standalone-gui-input -LogDirectory artifacts/windows-standalone-gui-logs
+      - name: Retain sanitized GUI evidence and installer logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-standalone-gui-${{ inputs.source_run_id }}
+          path: artifacts/windows-standalone-gui-logs/
+          if-no-files-found: warn
+          retention-days: 14
