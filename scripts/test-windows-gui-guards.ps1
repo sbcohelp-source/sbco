@@ -8,7 +8,7 @@ $source=Join-Path $PSScriptRoot 'test-windows-standalone-gui.ps1'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw ($errors|Out-String) }
-foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity','ConvertFrom-EdgeDriverVersion','Protect-GuiStartupText','Test-GuiDescendantIdentity')) {
+foreach ($name in @('Assert-GuiPath','Assert-OwnedGuiRoot','Get-GuiDataRoots','Test-GuiChildIdentity','ConvertFrom-EdgeDriverVersion','Protect-GuiStartupText','Test-GuiDescendantIdentity','Read-GuiLiveText')) {
     $definition=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     Assert ($null -ne $definition) "Missing helper $name"
     Invoke-Expression $definition.Extent.Text
@@ -47,6 +47,14 @@ Write-Host 'PASS exact parent-instance ancestry, including stale PID reuse and u
 $fixture=Join-Path ([IO.Path]::GetTempPath()) ('sbco-gui-guards-'+[guid]::NewGuid().ToString('N'))
 try {
     [IO.Directory]::CreateDirectory($fixture)|Out-Null
+    $liveLog=Join-Path $fixture 'live-output.txt'
+    $writer=[IO.File]::Open($liveLog,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite)
+    try {
+        $bytes=[Text.Encoding]::UTF8.GetBytes('live application diagnostics')
+        $writer.Write($bytes,0,$bytes.Length);$writer.Flush()
+        Assert ((Read-GuiLiveText $liveLog) -ceq 'live application diagnostics') 'Live application output could not be read with shared write handles.'
+    } finally { $writer.Dispose() }
+    Write-Host 'PASS live application stream diagnostics while writer remains open.'
     $root=Join-Path $fixture 'in.sbco.vouchercheck';[IO.Directory]::CreateDirectory($root)|Out-Null
     $token=[guid]::NewGuid().ToString('N');$allowed=@($root)
     $marker=Join-Path $root 'gui-fixture-owner.txt'

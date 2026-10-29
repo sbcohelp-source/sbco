@@ -166,10 +166,44 @@ function Protect-GuiStartupText([string]$Text,[string[]]$Secrets) {
     $Text=[regex]::Replace($Text,'postgres(?:ql)?://[^\s"<>]+','[REDACTED_DATABASE_URI]')
     return $Text.Substring(0,[Math]::Min(3000,$Text.Length))
 }
+function Read-GuiLiveText([string]$Path) {
+    # Python retains write handles while the supervised application is alive.
+    # ReadAllText's read-only sharing would reject precisely that diagnostic case.
+    $stream=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+    $reader=[IO.StreamReader]::new($stream)
+    try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+}
+function Save-GuiStartupState([string]$Phase) {
+    $state=@{}
+    try {
+        Remember-GuiProcesses
+        $active=@(foreach ($owned in $knownProcesses.Values) {
+            $current=Get-CimInstance Win32_Process -Filter "ProcessId=$($owned.pid)"
+            if ($current -and $current.CreationDate -eq $owned.created -and $current.ExecutablePath -ieq $owned.path) { $current }
+        })
+        $state.processes=@($active | Select-Object -First 100 | ForEach-Object {
+            @{pid=$_.ProcessId;parent_pid=$_.ParentProcessId;created=$_.CreationDate;executable=[IO.Path]::GetFileName($_.ExecutablePath)}
+        })
+        $state.windows=@($active | Where-Object { $_.ExecutablePath -ieq $application } | ForEach-Object {
+            $native=Get-Process -Id $_.ProcessId -ErrorAction Stop
+            @{pid=$_.ProcessId;handle=$native.MainWindowHandle.ToInt64();title=$native.MainWindowTitle}
+        })
+        $ids=@($active | ForEach-Object { $_.ProcessId })
+        $state.listeners=@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object { $_.OwningProcess -in $ids } | Select-Object -First 100 | ForEach-Object {
+            @{pid=$_.OwningProcess;address=$_.LocalAddress;port=$_.LocalPort}
+        })
+        $state.database_files=@(foreach ($root in $knownRoots) {
+            Assert-OwnedGuiRoot $root $token $allowedRoots
+            $log=Join-Path $root 'postgres.log'
+            @{config_exists=(Test-Path -LiteralPath (Join-Path $root 'database.json'));pg_version_exists=(Test-Path -LiteralPath (Join-Path $root 'postgres/PG_VERSION'));pid_file_exists=(Test-Path -LiteralPath (Join-Path $root 'postgres/postmaster.pid'));log_bytes=$(if (Test-Path -LiteralPath $log) { (Get-Item -LiteralPath $log).Length } else { 0 })}
+        })
+    } catch { $state.snapshot_error=@{type=$_.Exception.GetType().Name;hresult=$_.Exception.HResult} }
+    $state | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $LogDirectory ($Phase+'-startup-state.json'))
+}
 function Save-GuiStartupEvidence([string]$Phase) {
     # Raw child output stays private. Discover generated secrets before exporting
     # any bounded text; if discovery fails, omit the text instead of guessing.
-    $result=@{}
+    $result=@{};$diagnosticStage='discover generated secrets'
     try {
         $secrets=@(foreach ($root in $knownRoots) {
             Assert-OwnedGuiRoot $root $token $allowedRoots
@@ -179,10 +213,16 @@ function Save-GuiStartupEvidence([string]$Phase) {
         $accountFile=Join-Path $privateRoot 'account.json'
         if (Test-Path -LiteralPath $accountFile) { $secrets+=@((Get-Content -LiteralPath $accountFile -Raw | ConvertFrom-Json).password) }
         foreach ($stream in @('stdout','stderr')) {
+            $diagnosticStage='read '+$stream
             $path=Join-Path $privateRoot ($Phase+'-application.'+$stream)
-            if (Test-Path -LiteralPath $path) { $result[$stream]=Protect-GuiStartupText ([IO.File]::ReadAllText($path)) $secrets }
+            if (Test-Path -LiteralPath $path) { $result[$stream]=Protect-GuiStartupText (Read-GuiLiveText $path) $secrets }
         }
-    } catch { $result=@{diagnostics='Application text omitted because safe redaction could not be established.'} }
+        $result.postgres_logs=@(foreach ($root in $knownRoots) {
+            $diagnosticStage='read owned PostgreSQL log'
+            $path=Join-Path $root 'postgres.log'
+            if (Test-Path -LiteralPath $path) { Protect-GuiStartupText (Read-GuiLiveText $path) $secrets }
+        })
+    } catch { $result=@{diagnostics='Application text omitted because safe redaction could not be established.';stage=$diagnosticStage;error_type=$_.Exception.GetType().Name;hresult=$_.Exception.HResult} }
     $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $LogDirectory ($Phase+'-application-diagnostics.json'))
 }
 function ConvertFrom-EdgeDriverVersion([string]$Output,[int]$ExitCode) {
@@ -276,7 +316,7 @@ try {
         try {
             $deadline=[DateTime]::UtcNow.AddMinutes(8)
             while (-not $process.WaitForExit(1000)) { Remember-GuiProcesses;Confirm-GuiDebugListener $phase;if ([DateTime]::UtcNow -gt $deadline) { $process.Kill();throw "GUI $phase exceeded eight minutes." } }
-            if ($process.ExitCode -ne 0) { Save-GuiStartupEvidence $phase;throw "GUI $phase failed; inspect sanitized phase evidence." }
+            if ($process.ExitCode -ne 0) { Save-GuiStartupState $phase;Save-GuiStartupEvidence $phase;throw "GUI $phase failed; inspect sanitized phase evidence." }
         } finally {
             try {
                 # A supervisor rejection can interrupt Python while it waits for
