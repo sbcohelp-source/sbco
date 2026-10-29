@@ -56,7 +56,7 @@ try {
     foreach ($root in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall')) {
         if (Test-Path $root) {
             foreach ($entry in Get-ChildItem $root) {
-                $name = Get-ItemPropertyValue -LiteralPath $entry.PSPath -Name DisplayName -ErrorAction SilentlyContinue
+                $name = $entry.GetValue('DisplayName', $null)
                 if ($name -like 'SBCO*') { throw "An existing SBCO product is registered: $name" }
             }
         }
