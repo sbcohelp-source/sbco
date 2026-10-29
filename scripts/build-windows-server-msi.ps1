@@ -55,7 +55,7 @@ try {
     $rtf = '{\rtf1\ansi\deff0{\fonttbl{\f0 Courier New;}}\f0\fs16 ' + $license.Replace('\','\\').Replace('{','\{').Replace('}','\}').Replace("`r",'').Replace("`n",'\par ') + '}'
     $licenseRtf = Join-Path $work 'license.rtf'; Set-Content $licenseRtf $rtf -Encoding ascii
     $harvest = Join-Path $work 'payload.wxs'
-    & (Join-Path $WixRoot 'heat.exe') dir $payload -nologo -cg ServerPayload -dr INSTALLFOLDER -srd -sfrag -ag -var var.ServerPayloadDir -out $harvest
+    & (Join-Path $WixRoot 'heat.exe') dir $payload -nologo -cg ServerPayload -dr INSTALLFOLDER -srd -sfrag -scom -sreg -ag -var var.ServerPayloadDir -out $harvest
     if ($LASTEXITCODE -ne 0) { throw 'WiX payload harvesting failed.' }
     $brand = Join-Path $repoRoot 'apps/desktop/src-tauri/installer/branding'
     $defines = @("-dServerPayloadDir=$payload", "-dAppIcon=$(Join-Path $repoRoot 'apps/desktop/src-tauri/icons/icon.ico')", "-dLicenseRtf=$licenseRtf", "-dBannerBmp=$(Join-Path $brand 'banner.bmp')", "-dDialogBmp=$(Join-Path $brand 'dialog.bmp')")

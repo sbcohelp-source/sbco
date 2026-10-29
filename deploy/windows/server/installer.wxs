@@ -8,7 +8,7 @@
     <Property Id="ARPHELPLINK" Value="mailto:sbcohelp@gmail.com" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/sbcohelp-source/sbco" />
     <Property Id="ARPPRODUCTICON" Value="SBCOIcon" />
-    <Property Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" />
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
     <Icon Id="SBCOIcon" SourceFile="$(var.AppIcon)" />
     <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
     <WixVariable Id="WixUIBannerBmp" Value="$(var.BannerBmp)" />
@@ -21,7 +21,7 @@
     <DirectoryRef Id="SBCOMenu">
       <Component Id="ServerShortcut" Guid="*" Win64="yes">
         <Shortcut Id="ConfigureShortcut" Name="Configure SBCO Server" Description="Set up HTTPS and the first administrator, or resume the existing server" Target="[System64Folder]WindowsPowerShell\v1.0\powershell.exe" Arguments="-NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]server\Configure-Server.ps1&quot;" WorkingDirectory="INSTALLFOLDER" Icon="SBCOIcon" />
-        <RegistryValue Root="HKLM" Key="Software\S K Singh\SBCO Server" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\S K Singh\SBCO Server" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
         <RemoveFolder Id="RemoveServerMenu" On="uninstall" />
       </Component>
     </DirectoryRef>

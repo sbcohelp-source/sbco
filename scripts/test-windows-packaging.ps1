@@ -37,3 +37,8 @@ foreach ($launcher in $launchers) {
     if (-not $launcher.Value.Contains('[System64Folder]') -or $launcher.Value.Contains('[SystemFolder]')) { throw 'Server x64 launcher must use System64Folder.' }
 }
 Write-Host 'PASS all six server MSI launchers use the 64-bit Windows system directory.'
+
+$shortcutKey = $wix.SelectSingleNode('//w:Component[@Id="ServerShortcut"]/w:RegistryValue[@KeyPath="yes"]', $namespace)
+if ($null -eq $shortcutKey -or $shortcutKey.Root -ne 'HKCU') { throw 'Non-advertised Start Menu shortcut requires an HKCU registry key path (ICE38/43/57).' }
+if ($null -eq $wix.SelectSingleNode('//w:SetProperty[@Id="ARPINSTALLLOCATION"][@After="CostFinalize"]', $namespace)) { throw 'Install location must be resolved after directory costing.' }
+Write-Host 'PASS shortcut registry scope and resolved install-location metadata.'
